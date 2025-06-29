@@ -872,7 +872,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 	baseURLs := []string{}
 	if os.Getenv("OPENAPI_BASE_URL") != "" {
 		baseURLs = append(baseURLs, os.Getenv("OPENAPI_BASE_URL"))
-	} else if doc.Servers != nil && len(doc.Servers) > 0 {
+	} else if len(doc.Servers) > 0 {
 		for _, s := range doc.Servers {
 			if s != nil && s.URL != "" {
 				baseURLs = append(baseURLs, s.URL)
