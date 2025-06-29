@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/mcp"
-	mcpserver "github.com/jedisct1/openapi-mcp/pkg/mcp/server"
+	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -1073,14 +1073,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 					errorText += "\n\n" + strings.Join(suggestions, "\n")
 				}
 
-				return mcp.NewToolResultError(
-					errorText,
-					inputSchema,
-					args,
-					[]any{args},
-					"call <tool> <json-args>",
-					[]string{"list", "schema <tool>"},
-				), nil
+				return mcp.NewToolResultError(errorText), nil
 			}
 
 			// Build URL path with path parameters
@@ -1341,14 +1334,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 								Text: string(errorJSON),
 							},
 						},
-						IsError:      true,
-						Schema:       inputSchema,
-						Arguments:    args,
-						Examples:     []any{args},
-						Usage:        "call <tool> <json-args>",
-						NextSteps:    []string{"list", "schema <tool>"},
-						OutputFormat: "structured",
-						OutputType:   "file",
+						IsError: true,
 					}, nil
 				}
 				// Create a simple text error message
@@ -1361,14 +1347,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 				}
 				errorText += fmt.Sprintf("\nOperation: %s (%s)", opCopy.OperationID, opSummary)
 
-				return mcp.NewToolResultError(
-					errorText,
-					inputSchema,
-					args,
-					[]any{args},
-					"call <tool> <json-args>",
-					[]string{"list", "schema <tool>"},
-				), nil
+				return mcp.NewToolResultError(errorText), nil
 			}
 
 			// Handle binary/file responses for success
@@ -1400,13 +1379,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 							Text: string(resultJSON),
 						},
 					},
-					Schema:       inputSchema,
-					Arguments:    args,
-					Examples:     []any{args},
-					Usage:        "call <tool> <json-args>",
-					NextSteps:    []string{"list", "schema <tool>"},
-					OutputFormat: "structured",
-					OutputType:   "file",
 				}, nil
 			}
 
@@ -1420,40 +1392,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 							Text: respText,
 						},
 					},
-					Schema:       inputSchema,
-					Arguments:    args,
-					Examples:     []any{args},
-					Usage:        "call <tool> <json-args>",
-					NextSteps:    []string{"list", "schema <tool>"},
-					Partial:      true,
-					ResumeToken:  "stream-" + fmt.Sprintf("%d", rand.Intn(1000)),
-					OutputFormat: "unstructured",
-					OutputType:   "text",
-				}, nil
-			}
-			if args["resume_token"] != "" {
-				var resumeToken string
-				if s, ok := args["resume_token"].(string); ok {
-					resumeToken = s
-				} else {
-					resumeToken = fmt.Sprintf("%v", args["resume_token"])
-				}
-				return &mcp.CallToolResult{
-					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "text",
-							Text: respText,
-						},
-					},
-					Schema:       inputSchema,
-					Arguments:    args,
-					Examples:     []any{args},
-					Usage:        "call <tool> <json-args>",
-					NextSteps:    []string{"list", "schema <tool>"},
-					Partial:      true,
-					ResumeToken:  resumeToken,
-					OutputFormat: "unstructured",
-					OutputType:   "text",
 				}, nil
 			}
 			if (opts == nil || opts.ConfirmDangerousActions) && (method == "PUT" || method == "POST" || method == "DELETE") {
@@ -1466,8 +1404,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 								Text: confirmText,
 							},
 						},
-						OutputFormat: "unstructured",
-						OutputType:   "text",
 					}, nil
 				}
 			}
@@ -1478,13 +1414,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 						Text: respText,
 					},
 				},
-				Schema:       inputSchema,
-				Arguments:    args,
-				Examples:     []any{args},
-				Usage:        "call <tool> <json-args>",
-				NextSteps:    []string{"list", "schema <tool>"},
-				OutputFormat: "unstructured",
-				OutputType:   "text",
 			}, nil
 		})
 		toolNames = append(toolNames, name)
@@ -1515,11 +1444,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 						Text: info,
 					},
 				},
-				Schema:    inputSchema,
-				Arguments: map[string]any{},
-				Examples:  []any{},
-				Usage:     "call externalDocs <json-args>",
-				NextSteps: []string{"list", "schema externalDocs"},
 			}, nil
 		})
 		toolNames = append(toolNames, "externalDocs")
@@ -1559,57 +1483,11 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 						Text: strings.TrimSpace(sb.String()),
 					},
 				},
-				Schema:    inputSchema,
-				Arguments: map[string]any{},
-				Examples:  []any{},
-				Usage:     "call info <json-args>",
-				NextSteps: []string{"list", "schema info"},
 			}, nil
 		})
 		toolNames = append(toolNames, "info")
 	}
 
-	// After registering all OpenAPI tools, add a `describe` tool that returns the full schema and metadata for all tools.
-	if opts == nil || !opts.DryRun {
-		describeSchema := map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		}
-		describeSchemaJSON, _ := json.MarshalIndent(describeSchema, "", "  ")
-		describeTool := mcp.NewToolWithRawSchema("describe", "Describe all available tools and their schemas in machine-readable form.", describeSchemaJSON)
-		describeTool.Annotations = mcp.ToolAnnotation{Title: "Agent-Friendly Documentation"}
-		server.AddTool(describeTool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			// Gather all tools and their schemas
-			tools := []map[string]any{}
-			for _, tool := range server.ListTools() {
-				toolInfo := map[string]any{
-					"name":         tool.Name,
-					"description":  tool.Description,
-					"inputSchema":  tool.InputSchema,
-					"annotations":  tool.Annotations,
-					"output_type":  "text", // default, can be improved if richer info is available
-					"example_call": map[string]any{"name": tool.Name, "arguments": map[string]any{}},
-				}
-				tools = append(tools, toolInfo)
-			}
-			response := map[string]any{
-				"type":  "tool_descriptions",
-				"tools": tools,
-			}
-			jsonOut, _ := json.MarshalIndent(response, "", "  ")
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "json",
-						Text: string(jsonOut),
-					},
-				},
-				OutputFormat: "structured",
-				OutputType:   "json",
-			}, nil
-		})
-		toolNames = append(toolNames, "describe")
-	}
 
 	if opts != nil && opts.DryRun {
 		if opts.PrettyPrint {

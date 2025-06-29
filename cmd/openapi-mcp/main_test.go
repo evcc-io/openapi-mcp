@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/mcp"
-	mcpserver "github.com/jedisct1/openapi-mcp/pkg/mcp/server"
+	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 )
 
@@ -73,9 +73,9 @@ func TestRegisterOpenAPITools(t *testing.T) {
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
 				// Check for HTTP error text patterns
-				if strings.Contains(tc.Text, "HTTP Error") && strings.Contains(tc.Text, "404") {
-					found = true
-				} else if strings.Contains(tc.Text, "Status: 404") && strings.Contains(tc.Text, "404 page not found") {
+				if (strings.Contains(tc.Text, "HTTP Error") && strings.Contains(tc.Text, "404")) ||
+				   (strings.Contains(tc.Text, "Status: 404") && strings.Contains(tc.Text, "404 page not found")) ||
+				   (strings.Contains(tc.Text, "Error: Not Found (HTTP 404)")) {
 					found = true
 				}
 			}
@@ -194,28 +194,26 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 		found := false
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
-				switch toolResult.OutputType {
-				case "json":
+				// Check response content type
+				if tc.Type == "json" {
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
+						// Check for error objects
 						if errObj, ok := obj["error"].(map[string]any); ok {
 							if errObj["http_status"] == float64(404) && strings.Contains(errObj["message"].(string), "404") {
 								found = true
 							}
 						}
-					}
-				case "file":
-					var fileObj map[string]any
-					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
-						if _, ok := fileObj["file_base64"]; ok {
-							if _, ok := fileObj["mime_type"]; ok {
-								if _, ok := fileObj["file_name"]; ok {
+						// Check for file objects
+						if _, ok := obj["file_base64"]; ok {
+							if _, ok := obj["mime_type"]; ok {
+								if _, ok := obj["file_name"]; ok {
 									found = true
 								}
 							}
 						}
 					}
-				default:
+				} else {
 					if strings.Contains(tc.Text, "/foo/123?q=test") && strings.Contains(tc.Text, "result\":\"ok\"") {
 						found = true
 					}
@@ -229,14 +227,14 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 		t.Fatalf("unexpected result type: %T", v)
 	}
 
-	// Test POST with JSON body
+	// Test POST with JSON body (with confirmation)
 	postReq := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      2,
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name":      "createBar",
-			"arguments": map[string]any{"requestBody": map[string]any{"foo": "bar"}},
+			"arguments": map[string]any{"requestBody": map[string]any{"foo": "bar"}, "__confirmed": true},
 		},
 	}
 	postReqJSON, _ := json.Marshal(postReq)
@@ -252,28 +250,26 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 		found := false
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
-				switch toolResult.OutputType {
-				case "json":
+				// Check response content type
+				if tc.Type == "json" {
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
+						// Check for error objects
 						if errObj, ok := obj["error"].(map[string]any); ok {
 							if errObj["http_status"] == float64(404) && strings.Contains(errObj["message"].(string), "404") {
 								found = true
 							}
 						}
-					}
-				case "file":
-					var fileObj map[string]any
-					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
-						if _, ok := fileObj["file_base64"]; ok {
-							if _, ok := fileObj["mime_type"]; ok {
-								if _, ok := fileObj["file_name"]; ok {
+						// Check for file objects
+						if _, ok := obj["file_base64"]; ok {
+							if _, ok := obj["mime_type"]; ok {
+								if _, ok := obj["file_name"]; ok {
 									found = true
 								}
 							}
 						}
 					}
-				default:
+				} else {
 					if strings.Contains(tc.Text, "/bar") && strings.Contains(tc.Text, "echo") && strings.Contains(tc.Text, "bar") {
 						found = true
 					}
@@ -310,19 +306,30 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 		found := false
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
-				switch toolResult.OutputType {
-				case "json":
+				// Check response content type
+				if tc.Type == "json" {
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
+						// Check for error objects
 						if errObj, ok := obj["error"].(map[string]any); ok {
 							if errObj["http_status"] == float64(404) && strings.Contains(errObj["message"].(string), "404") {
 								found = true
 							}
 						}
+						// Check for file objects
+						if _, ok := obj["file_base64"]; ok {
+							if _, ok := obj["mime_type"]; ok {
+								if _, ok := obj["file_name"]; ok {
+									found = true
+								}
+							}
+						}
 					}
-				case "file":
+				} else {
+					// Check if response contains file content
 					var fileObj map[string]any
-					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
+					err := json.Unmarshal([]byte(tc.Text), &fileObj)
+					if err == nil {
 						if _, ok := fileObj["file_base64"]; ok {
 							if _, ok := fileObj["mime_type"]; ok {
 								if _, ok := fileObj["file_name"]; ok {
@@ -330,25 +337,6 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 								}
 							}
 						}
-					}
-				default:
-					if toolResult.OutputType == "file" {
-						var fileObj map[string]any
-						err := json.Unmarshal([]byte(tc.Text), &fileObj)
-						if err != nil {
-							t.Errorf("expected JSON file object, got: %v", tc.Text)
-							continue
-						}
-						if _, ok := fileObj["file_base64"]; !ok {
-							t.Errorf("expected file_base64 in file response, got: %v", fileObj)
-						}
-						if _, ok := fileObj["mime_type"]; !ok {
-							t.Errorf("expected mime_type in file response, got: %v", fileObj)
-						}
-						if _, ok := fileObj["file_name"]; !ok {
-							t.Errorf("expected file_name in file response, got: %v", fileObj)
-						}
-						found = true
 					}
 				}
 			}
@@ -450,28 +438,26 @@ func TestExternalDocsTool(t *testing.T) {
 		found := false
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
-				switch toolResult.OutputType {
-				case "json":
+				// Check response content type
+				if tc.Type == "json" {
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
+						// Check for error objects
 						if errObj, ok := obj["error"].(map[string]any); ok {
 							if errObj["http_status"] == float64(404) && strings.Contains(errObj["message"].(string), "404") {
 								found = true
 							}
 						}
-					}
-				case "file":
-					var fileObj map[string]any
-					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
-						if _, ok := fileObj["file_base64"]; ok {
-							if _, ok := fileObj["mime_type"]; ok {
-								if _, ok := fileObj["file_name"]; ok {
+						// Check for file objects
+						if _, ok := obj["file_base64"]; ok {
+							if _, ok := obj["mime_type"]; ok {
+								if _, ok := obj["file_name"]; ok {
 									found = true
 								}
 							}
 						}
 					}
-				default:
+				} else {
 					if strings.Contains(tc.Text, "https://docs.example.com") && strings.Contains(tc.Text, "full API documentation") {
 						found = true
 					}
@@ -519,28 +505,26 @@ func TestInfoTool(t *testing.T) {
 		found := false
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
-				switch toolResult.OutputType {
-				case "json":
+				// Check response content type
+				if tc.Type == "json" {
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
+						// Check for error objects
 						if errObj, ok := obj["error"].(map[string]any); ok {
 							if errObj["http_status"] == float64(404) && strings.Contains(errObj["message"].(string), "404") {
 								found = true
 							}
 						}
-					}
-				case "file":
-					var fileObj map[string]any
-					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
-						if _, ok := fileObj["file_base64"]; ok {
-							if _, ok := fileObj["mime_type"]; ok {
-								if _, ok := fileObj["file_name"]; ok {
+						// Check for file objects
+						if _, ok := obj["file_base64"]; ok {
+							if _, ok := obj["mime_type"]; ok {
+								if _, ok := obj["file_name"]; ok {
 									found = true
 								}
 							}
 						}
 					}
-				default:
+				} else {
 					if strings.Contains(tc.Text, "My API") && strings.Contains(tc.Text, "1.2.3") && strings.Contains(tc.Text, "test API") && strings.Contains(tc.Text, "tos.example.com") {
 						found = true
 					}

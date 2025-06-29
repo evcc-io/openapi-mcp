@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/jedisct1/openapi-mcp/pkg/mcp/mcp"
-	mcpserver "github.com/jedisct1/openapi-mcp/pkg/mcp/server"
+	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 )
 
