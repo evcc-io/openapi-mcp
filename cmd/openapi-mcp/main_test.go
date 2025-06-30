@@ -239,7 +239,7 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 		"method":  "tools/call",
 		"params": map[string]any{
 			"name":      "createBar",
-			"arguments": map[string]any{"requestBody": map[string]any{"foo": "bar"}},
+			"arguments": map[string]any{"requestBody": map[string]any{"foo": "bar"}, "__confirmed": true},
 		},
 	}
 	postReqJSON, _ := json.Marshal(postReq)
