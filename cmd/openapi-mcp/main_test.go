@@ -340,25 +340,6 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 							}
 						}
 					}
-					// default:
-					// 	if toolResult.OutputType == "file" {
-					// 		var fileObj map[string]any
-					// 		err := json.Unmarshal([]byte(tc.Text), &fileObj)
-					// 		if err != nil {
-					// 			t.Errorf("expected JSON file object, got: %v", tc.Text)
-					// 			continue
-					// 		}
-					// 		if _, ok := fileObj["file_base64"]; !ok {
-					// 			t.Errorf("expected file_base64 in file response, got: %v", fileObj)
-					// 		}
-					// 		if _, ok := fileObj["mime_type"]; !ok {
-					// 			t.Errorf("expected mime_type in file response, got: %v", fileObj)
-					// 		}
-					// 		if _, ok := fileObj["file_name"]; !ok {
-					// 			t.Errorf("expected file_name in file response, got: %v", fileObj)
-					// 		}
-					// 		found = true
-					// 	}
 				}
 			}
 		}
