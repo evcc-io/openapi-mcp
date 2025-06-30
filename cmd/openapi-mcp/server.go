@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/evcc-io/openapi-mcp/pkg/openapi2mcp"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
-	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 )
 
 // startServer starts the MCP server in stdio or HTTP mode, based on CLI flags.

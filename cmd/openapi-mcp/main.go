@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/evcc-io/openapi-mcp/pkg/openapi2mcp"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 	"gopkg.in/yaml.v3"
 )
 

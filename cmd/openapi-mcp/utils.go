@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/evcc-io/openapi-mcp/pkg/openapi2mcp"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/jedisct1/openapi-mcp/pkg/openapi2mcp"
 )
 
 // handleDryRunMode handles the --dry-run mode, printing tool schemas and summaries.

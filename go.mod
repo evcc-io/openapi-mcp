@@ -1,4 +1,4 @@
-module github.com/jedisct1/openapi-mcp
+module github.com/evcc-io/openapi-mcp
 
 go 1.23
 
