@@ -461,7 +461,8 @@ func TestExternalDocsTool(t *testing.T) {
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
 				// Check response content type
-				if tc.Type == "json" {
+				switch tc.Type {
+				case "json":
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
 						// Check for error objects
@@ -470,16 +471,21 @@ func TestExternalDocsTool(t *testing.T) {
 								found = true
 							}
 						}
+					}
+				case "file":
+					// Check if response contains file content
+					var fileObj map[string]any
+					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
 						// Check for file objects
-						if _, ok := obj["file_base64"]; ok {
-							if _, ok := obj["mime_type"]; ok {
-								if _, ok := obj["file_name"]; ok {
+						if _, ok := fileObj["file_base64"]; ok {
+							if _, ok := fileObj["mime_type"]; ok {
+								if _, ok := fileObj["file_name"]; ok {
 									found = true
 								}
 							}
 						}
 					}
-				} else {
+				default:
 					if strings.Contains(tc.Text, "https://docs.example.com") && strings.Contains(tc.Text, "full API documentation") {
 						found = true
 					}
@@ -528,7 +534,8 @@ func TestInfoTool(t *testing.T) {
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
 				// Check response content type
-				if tc.Type == "json" {
+				switch tc.Type {
+				case "json":
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
 						// Check for error objects
@@ -537,16 +544,21 @@ func TestInfoTool(t *testing.T) {
 								found = true
 							}
 						}
+					}
+				case "file":
+					// Check if response contains file content
+					var fileObj map[string]any
+					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
 						// Check for file objects
-						if _, ok := obj["file_base64"]; ok {
-							if _, ok := obj["mime_type"]; ok {
-								if _, ok := obj["file_name"]; ok {
+						if _, ok := fileObj["file_base64"]; ok {
+							if _, ok := fileObj["mime_type"]; ok {
+								if _, ok := fileObj["file_name"]; ok {
 									found = true
 								}
 							}
 						}
 					}
-				} else {
+				default:
 					if strings.Contains(tc.Text, "My API") && strings.Contains(tc.Text, "1.2.3") && strings.Contains(tc.Text, "test API") && strings.Contains(tc.Text, "tos.example.com") {
 						found = true
 					}
