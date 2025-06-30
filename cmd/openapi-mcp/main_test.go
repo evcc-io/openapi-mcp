@@ -218,7 +218,6 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 							}
 						}
 					}
-
 				default:
 					if strings.Contains(tc.Text, "/foo/123?q=test") && strings.Contains(tc.Text, "result\":\"ok\"") {
 						found = true
@@ -318,7 +317,8 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 		for _, c := range toolResult.Content {
 			if tc, ok := c.(mcp.TextContent); ok {
 				// Check response content type
-				if tc.Type == "json" {
+				switch tc.Type {
+				case "json":
 					var obj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &obj); err == nil {
 						// Check for error objects
@@ -327,20 +327,12 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 								found = true
 							}
 						}
-						// Check for file objects
-						if _, ok := obj["file_base64"]; ok {
-							if _, ok := obj["mime_type"]; ok {
-								if _, ok := obj["file_name"]; ok {
-									found = true
-								}
-							}
-						}
 					}
-				} else {
+				case "file":
 					// Check if response contains file content
 					var fileObj map[string]any
-					err := json.Unmarshal([]byte(tc.Text), &fileObj)
-					if err == nil {
+					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
+						// Check for file objects
 						if _, ok := fileObj["file_base64"]; ok {
 							if _, ok := fileObj["mime_type"]; ok {
 								if _, ok := fileObj["file_name"]; ok {
@@ -349,6 +341,25 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 							}
 						}
 					}
+					// default:
+					// 	if toolResult.OutputType == "file" {
+					// 		var fileObj map[string]any
+					// 		err := json.Unmarshal([]byte(tc.Text), &fileObj)
+					// 		if err != nil {
+					// 			t.Errorf("expected JSON file object, got: %v", tc.Text)
+					// 			continue
+					// 		}
+					// 		if _, ok := fileObj["file_base64"]; !ok {
+					// 			t.Errorf("expected file_base64 in file response, got: %v", fileObj)
+					// 		}
+					// 		if _, ok := fileObj["mime_type"]; !ok {
+					// 			t.Errorf("expected mime_type in file response, got: %v", fileObj)
+					// 		}
+					// 		if _, ok := fileObj["file_name"]; !ok {
+					// 			t.Errorf("expected file_name in file response, got: %v", fileObj)
+					// 		}
+					// 		found = true
+					// 	}
 				}
 			}
 		}
