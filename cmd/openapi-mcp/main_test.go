@@ -329,7 +329,6 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 						}
 					}
 				case "file":
-					// Check if response contains file content
 					var fileObj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
 						// Check for file objects
@@ -473,7 +472,6 @@ func TestExternalDocsTool(t *testing.T) {
 						}
 					}
 				case "file":
-					// Check if response contains file content
 					var fileObj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
 						// Check for file objects
@@ -546,7 +544,6 @@ func TestInfoTool(t *testing.T) {
 						}
 					}
 				case "file":
-					// Check if response contains file content
 					var fileObj map[string]any
 					if err := json.Unmarshal([]byte(tc.Text), &fileObj); err == nil {
 						// Check for file objects
