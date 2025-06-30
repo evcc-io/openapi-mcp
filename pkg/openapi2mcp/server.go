@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	mcpserver "github.com/jedisct1/openapi-mcp/pkg/mcp/server"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
 // authContextFunc extracts authentication headers from HTTP requests and sets them
