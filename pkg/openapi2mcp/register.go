@@ -435,7 +435,20 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			continue
 		}
 
-		server.AddTool(tool, toolHandler(name, op, doc, inputSchemaJSON, baseURLs, opts != nil && opts.ConfirmDangerousActions))
+		requestHandler := defaultRequestHandler
+		if opts != nil && opts.RequestHandler != nil {
+			requestHandler = opts.RequestHandler
+		}
+
+		server.AddTool(tool, toolHandler(
+			name,
+			op,
+			doc,
+			inputSchemaJSON,
+			baseURLs,
+			opts != nil && opts.ConfirmDangerousActions,
+			requestHandler,
+		))
 
 		toolNames = append(toolNames, name)
 	}
@@ -477,12 +490,14 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			"type":       "object",
 			"properties": map[string]any{},
 		}
+
 		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
 		tool := mcp.NewToolWithRawSchema("info", desc, inputSchemaJSON)
 		tool.Annotations = mcp.ToolAnnotation{}
 		if opts != nil && opts.Version != "" {
 			tool.Annotations.Title = "OpenAPI " + opts.Version
 		}
+
 		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			var sb strings.Builder
 			if doc.Info.Title != "" {

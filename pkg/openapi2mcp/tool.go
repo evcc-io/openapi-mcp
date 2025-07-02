@@ -18,7 +18,19 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 )
 
-func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJSON []byte, baseURLs []string, confirmDangerousActions bool) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func defaultRequestHandler(req *http.Request) (*http.Response, error) {
+	return http.DefaultClient.Do(req)
+}
+
+func toolHandler(
+	name string,
+	op OpenAPIOperation,
+	doc *openapi3.T,
+	inputSchemaJSON []byte,
+	baseURLs []string,
+	confirmDangerousActions bool,
+	requestHandler func(req *http.Request) (*http.Response, error),
+) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var schema *gojsonschema.Schema
 
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -312,7 +324,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 			logHTTPRequest(httpReq, body)
 		}
 
-		resp, err := http.DefaultClient.Do(httpReq)
+		resp, err := requestHandler(httpReq)
 		if err != nil {
 			return nil, err
 		}

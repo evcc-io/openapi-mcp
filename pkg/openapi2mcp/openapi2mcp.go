@@ -3,6 +3,8 @@
 package openapi2mcp
 
 import (
+	"net/http"
+
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -39,4 +41,5 @@ type ToolGenOptions struct {
 	Version                 string
 	PostProcessSchema       func(toolName string, schema map[string]any) map[string]any
 	ConfirmDangerousActions bool // if true, add confirmation prompt for dangerous actions
+	RequestHandler          func(req *http.Request) (*http.Response, error)
 }
