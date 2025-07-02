@@ -19,6 +19,8 @@ import (
 )
 
 func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJSON []byte, baseURLs []string, confirmDangerousActions bool) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var schema *gojsonschema.Schema
+
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := req.GetArguments()
 		if args == nil {
@@ -29,10 +31,17 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 		paramNameMapping := buildParameterNameMapping(op.Parameters)
 
 		// Validate arguments against inputSchema
+		if schema == nil {
+			var err error
+			schema, err = gojsonschema.NewSchema(gojsonschema.NewBytesLoader(inputSchemaJSON))
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		argsJSON, _ := json.Marshal(args)
-		schemaLoader := gojsonschema.NewBytesLoader(inputSchemaJSON)
 		argsLoader := gojsonschema.NewBytesLoader(argsJSON)
-		result, err := gojsonschema.Validate(schemaLoader, argsLoader)
+		result, err := schema.Validate(argsLoader)
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
@@ -48,11 +57,13 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 		if !result.Valid() {
 			var missingFields []string
 			var suggestions []string
-			errMsgs := ""
+			var errMsgs string
+
 			// Parse the input schema for property descriptions
 			var schemaObj map[string]any
 			_ = json.Unmarshal(inputSchemaJSON, &schemaObj)
 			properties, _ := schemaObj["properties"].(map[string]any)
+
 			for _, verr := range result.Errors() {
 				errMsg := ""
 
@@ -103,6 +114,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 					errMsgs += errMsg + "\n"
 				}
 			}
+
 			// Suggest a retry with an example argument set
 			exampleArgs := map[string]any{}
 			for k, v := range properties {
@@ -128,6 +140,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 					exampleArgs[k] = nil
 				}
 			}
+
 			suggestionStr := "Try again with: call " + name + " "
 			exampleJSON, _ := json.Marshal(exampleArgs)
 			suggestionStr += string(exampleJSON)
@@ -148,6 +161,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 			if paramRef == nil || paramRef.Value == nil {
 				continue
 			}
+
 			p := paramRef.Value
 			if p.In == "path" {
 				if val, ok := getParameterValue(args, p.Name, paramNameMapping); ok {
@@ -167,6 +181,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 			if paramRef == nil || paramRef.Value == nil {
 				continue
 			}
+
 			p := paramRef.Value
 			if p.In == "query" {
 				if val, ok := getParameterValue(args, p.Name, paramNameMapping); ok {
@@ -227,7 +242,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 
 		// --- AUTH HANDLING: inject per-operation security requirements ---
 		// For each security requirement object, try to satisfy at least one scheme
-		securitySatisfied := false
+		var securitySatisfied bool
 		for _, secReq := range op.Security {
 			for secName := range secReq {
 				// TODO fulfill ALL requirements
@@ -321,14 +336,17 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 				opSummary = op.Description
 			}
 			opDesc := op.Description
+
 			suggestion := "Check the input parameters, authentication, and consult the tool schema. See the OpenAPI documentation for more details."
-			if resp.StatusCode == 401 || resp.StatusCode == 403 {
+
+			switch {
+			case resp.StatusCode == 401 || resp.StatusCode == 403:
 				suggestion = generateAI401403ErrorResponse(op, inputSchemaJSON, args, string(respBody), resp.StatusCode)
-			} else if resp.StatusCode == 404 {
+			case resp.StatusCode == 404:
 				suggestion = generateAI404ErrorResponse(op, inputSchemaJSON, args, string(respBody))
-			} else if resp.StatusCode == 400 {
+			case resp.StatusCode == 400:
 				suggestion = generateAI400ErrorResponse(op, inputSchemaJSON, args, string(respBody))
-			} else if resp.StatusCode >= 500 {
+			case resp.StatusCode >= 500:
 				suggestion = generateAI5xxErrorResponse(op, inputSchemaJSON, args, string(respBody), resp.StatusCode)
 			}
 
@@ -429,6 +447,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 				},
 			}, nil
 		}
+
 		if confirmDangerousActions && (method == "PUT" || method == "POST" || method == "DELETE") {
 			if _, confirmed := args["__confirmed"]; !confirmed {
 				confirmText := fmt.Sprintf("⚠️  CONFIRMATION REQUIRED\n\nAction: %s\nThis action is irreversible. Proceed?\n\nTo confirm, retry the call with {\"__confirmed\": true} added to your arguments.", name)
@@ -442,6 +461,7 @@ func toolHandler(name string, op OpenAPIOperation, doc *openapi3.T, inputSchemaJ
 				}, nil
 			}
 		}
+
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				mcp.TextContent{
