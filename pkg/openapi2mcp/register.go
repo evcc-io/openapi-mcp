@@ -12,8 +12,8 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // getParameterValue retrieves a parameter value from args using the escaped parameter name.
@@ -459,7 +459,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		}
 
 		tool := &mcp.Tool{
-			Name: name,
+			Name:        name,
 			Description: desc,
 			InputSchema: &inputSchema,
 		}
@@ -498,26 +498,17 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 
 	// Add a tool for externalDocs if present
 	if doc.ExternalDocs != nil && doc.ExternalDocs.URL != "" && (opts == nil || !opts.DryRun) {
-		desc := "Show the OpenAPI external documentation URL and description."
-		inputSchema := map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		}
-		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		inputSchemaObj := &jsonschema.Schema{}
-		if err := json.Unmarshal(inputSchemaJSON, inputSchemaObj); err != nil {
-			inputSchemaObj = nil // fallback to nil if parsing fails
-		}
-		
 		tool := &mcp.Tool{
-			Name: "externalDocs",
-			Description: desc,
-			InputSchema: inputSchemaObj,
+			Name:        "externalDocs",
+			Description: "Show the OpenAPI external documentation URL and description.",
 		}
-		tool.Annotations = &mcp.ToolAnnotations{}
+
 		if opts != nil && opts.Version != "" {
-			tool.Annotations.Title = "OpenAPI " + opts.Version
+			tool.Annotations = &mcp.ToolAnnotations{
+				Title: "OpenAPI " + opts.Version,
+			}
 		}
+
 		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 			info := "External documentation URL: " + doc.ExternalDocs.URL
 			if doc.ExternalDocs.Description != "" {
@@ -536,26 +527,15 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 
 	// Add a tool for info if present
 	if doc.Info != nil && (opts == nil || !opts.DryRun) {
-		desc := "Show API metadata: title, version, description, and terms of service."
-		inputSchema := map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
+		tool := &mcp.Tool{
+			Name:        "info",
+			Description: "Show API metadata: title, version, description, and terms of service.",
 		}
 
-		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		inputSchemaObj := &jsonschema.Schema{}
-		if err := json.Unmarshal(inputSchemaJSON, inputSchemaObj); err != nil {
-			inputSchemaObj = nil // fallback to nil if parsing fails
-		}
-		
-		tool := &mcp.Tool{
-			Name: "info",
-			Description: desc,
-			InputSchema: inputSchemaObj,
-		}
-		tool.Annotations = &mcp.ToolAnnotations{}
 		if opts != nil && opts.Version != "" {
-			tool.Annotations.Title = "OpenAPI " + opts.Version
+			tool.Annotations = &mcp.ToolAnnotations{
+				Title: "OpenAPI " + opts.Version,
+			}
 		}
 
 		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
@@ -620,7 +600,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 
 			return &mcp.ReadResourceResult{
 				Contents: []*mcp.ResourceContents{
-					&mcp.ResourceContents{
+					{
 						URI:      timestampResource.URI,
 						MIMEType: "application/json",
 						Text:     content,
