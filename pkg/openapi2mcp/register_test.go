@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func stringPtr(s string) *string {
@@ -55,7 +55,8 @@ func toolSetEqual(a, b []string) bool {
 
 func TestRegisterOpenAPITools_Basic(t *testing.T) {
 	doc := minimalOpenAPIDoc()
-	srv := server.NewMCPServer("test", "1.0.0")
+	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
+	srv := mcp.NewServer(impl, nil)
 	ops := ExtractOpenAPIOperations(doc)
 	opts := &ToolGenOptions{}
 	names := RegisterOpenAPITools(srv, ops, doc, opts)
@@ -71,7 +72,8 @@ func TestRegisterOpenAPITools_TagFilter(t *testing.T) {
 	if pathItem != nil && pathItem.Get != nil {
 		pathItem.Get.Tags = []string{"bar"}
 	}
-	srv := server.NewMCPServer("test", "1.0.0")
+	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
+	srv := mcp.NewServer(impl, nil)
 	ops := ExtractOpenAPIOperations(doc)
 	opts := &ToolGenOptions{
 		TagFilter: []string{"baz"}, // should filter out
@@ -85,7 +87,8 @@ func TestRegisterOpenAPITools_TagFilter(t *testing.T) {
 
 func TestSelfTestOpenAPIMCP_Pass(t *testing.T) {
 	doc := minimalOpenAPIDoc()
-	srv := server.NewMCPServer("test", "1.0.0")
+	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
+	srv := mcp.NewServer(impl, nil)
 	ops := ExtractOpenAPIOperations(doc)
 	opts := &ToolGenOptions{}
 	RegisterOpenAPITools(srv, ops, doc, opts)

@@ -12,8 +12,7 @@ import (
 
 	"github.com/evcc-io/openapi-mcp/pkg/openapi2mcp"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestRegisterOpenAPITools(t *testing.T) {
@@ -44,7 +43,8 @@ func TestRegisterOpenAPITools(t *testing.T) {
 		Paths: paths,
 	}
 
-	server := mcpserver.NewMCPServer("test", "0.0.1")
+	impl := &mcp.Implementation{Name: "test", Version: "0.0.1"}
+	server := mcp.NewServer(impl, nil)
 	ops := openapi2mcp.ExtractOpenAPIOperations(doc)
 	openapi2mcp.RegisterOpenAPITools(server, ops, doc, nil)
 
@@ -166,7 +166,8 @@ func TestHTTPOpenAPIToolHandler(t *testing.T) {
 		Paths: paths,
 	}
 
-	server := mcpserver.NewMCPServer("test", "0.0.1")
+	impl := &mcp.Implementation{Name: "test", Version: "0.0.1"}
+	server := mcp.NewServer(impl, nil)
 	ops := openapi2mcp.ExtractOpenAPIOperations(doc)
 	openapi2mcp.RegisterOpenAPITools(server, ops, doc, nil)
 
@@ -391,7 +392,8 @@ func TestRegisterOpenAPITools_ServerSelection(t *testing.T) {
 		}(),
 	}
 
-	server := mcpserver.NewMCPServer("test", "0.0.1")
+	impl := &mcp.Implementation{Name: "test", Version: "0.0.1"}
+	server := mcp.NewServer(impl, nil)
 	ops := openapi2mcp.ExtractOpenAPIOperations(doc)
 	openapi2mcp.RegisterOpenAPITools(server, ops, doc, nil)
 
@@ -417,7 +419,8 @@ func TestExternalDocsTool(t *testing.T) {
 		},
 		Paths: openapi3.NewPaths(),
 	}
-	server := mcpserver.NewMCPServer("test", "0.0.1")
+	impl := &mcp.Implementation{Name: "test", Version: "0.0.1"}
+	server := mcp.NewServer(impl, nil)
 	ops := openapi2mcp.ExtractOpenAPIOperations(doc)
 	openapi2mcp.RegisterOpenAPITools(server, ops, doc, nil)
 
@@ -489,7 +492,8 @@ func TestInfoTool(t *testing.T) {
 		},
 		Paths: openapi3.NewPaths(),
 	}
-	server := mcpserver.NewMCPServer("test", "0.0.1")
+	impl := &mcp.Implementation{Name: "test", Version: "0.0.1"}
+	server := mcp.NewServer(impl, nil)
 	ops := openapi2mcp.ExtractOpenAPIOperations(doc)
 	openapi2mcp.RegisterOpenAPITools(server, ops, doc, nil)
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // authContextFunc extracts authentication headers from HTTP requests and sets them
@@ -90,9 +90,10 @@ func (c *authContext) restoreEnv() {
 //	doc, _ := openapi2mcp.LoadOpenAPISpec("petstore.yaml")
 //	srv := openapi2mcp.NewServer("petstore", doc.Info.Version, doc)
 //	openapi2mcp.ServeHTTP(srv, ":8080")
-func NewServer(name, version string, doc *openapi3.T) *mcpserver.MCPServer {
+func NewServer(name, version string, doc *openapi3.T) *mcp.Server {
 	ops := ExtractOpenAPIOperations(doc)
-	srv := mcpserver.NewMCPServer(name, version)
+	impl := &mcp.Implementation{Name: name, Version: version}
+	srv := mcp.NewServer(impl, nil)
 	RegisterOpenAPITools(srv, ops, doc, nil)
 	return srv
 }
@@ -104,8 +105,9 @@ func NewServer(name, version string, doc *openapi3.T) *mcpserver.MCPServer {
 //	ops := openapi2mcp.ExtractOpenAPIOperations(doc)
 //	srv := openapi2mcp.NewServerWithOps("petstore", doc.Info.Version, doc, ops)
 //	openapi2mcp.ServeHTTP(srv, ":8080")
-func NewServerWithOps(name, version string, doc *openapi3.T, ops []OpenAPIOperation) *mcpserver.MCPServer {
-	srv := mcpserver.NewMCPServer(name, version)
+func NewServerWithOps(name, version string, doc *openapi3.T, ops []OpenAPIOperation) *mcp.Server {
+	impl := &mcp.Implementation{Name: name, Version: version}
+	srv := mcp.NewServer(impl, nil)
 	RegisterOpenAPITools(srv, ops, doc, nil)
 	return srv
 }
@@ -115,8 +117,10 @@ func NewServerWithOps(name, version string, doc *openapi3.T, ops []OpenAPIOperat
 // Example usage for ServeStdio:
 //
 //	openapi2mcp.ServeStdio(srv)
-func ServeStdio(server *mcpserver.MCPServer) error {
-	return mcpserver.ServeStdio(server)
+func ServeStdio(server *mcp.Server) error {
+	transport := mcp.NewStdioTransport()
+	_, err := server.Connect(context.Background(), transport)
+	return err
 }
 
 // ServeHTTP starts the MCP server using HTTP SSE (wraps mcpserver.NewSSEServer and Start).
@@ -127,22 +131,13 @@ func ServeStdio(server *mcpserver.MCPServer) error {
 //
 //	srv, _ := openapi2mcp.NewServer("petstore", "1.0.0", doc)
 //	openapi2mcp.ServeHTTP(srv, ":8080", "/custom-base")
-func ServeHTTP(server *mcpserver.MCPServer, addr string, basePath string) error {
-	// Convert the authContextFunc to SSEContextFunc signature
-	sseAuthContextFunc := func(ctx context.Context, r *http.Request) context.Context {
-		return authContextFunc(ctx, r)
-	}
-
+func ServeHTTP(server *mcp.Server, addr string, basePath string) error {
 	if basePath == "" {
 		basePath = "/mcp"
 	}
 
-	sseServer := mcpserver.NewSSEServer(server,
-		mcpserver.WithSSEContextFunc(sseAuthContextFunc),
-		mcpserver.WithStaticBasePath(basePath),
-		mcpserver.WithSSEEndpoint("/sse"),
-		mcpserver.WithMessageEndpoint("/message"))
-	return sseServer.Start(addr)
+	handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return server })
+	return http.ListenAndServe(addr, handler)
 }
 
 // GetSSEURL returns the URL for establishing an SSE connection to the MCP server.
@@ -210,20 +205,8 @@ func normalizeAddrToHost(addr string) string {
 //
 //	handler := openapi2mcp.HandlerForBasePath(srv, "/petstore")
 //	mux.Handle("/petstore/", handler)
-func HandlerForBasePath(server *mcpserver.MCPServer, basePath string) http.Handler {
-	sseAuthContextFunc := func(ctx context.Context, r *http.Request) context.Context {
-		return authContextFunc(ctx, r)
-	}
-	if basePath == "" {
-		basePath = "/mcp"
-	}
-	sseServer := mcpserver.NewSSEServer(server,
-		mcpserver.WithSSEContextFunc(sseAuthContextFunc),
-		mcpserver.WithStaticBasePath(basePath),
-		mcpserver.WithSSEEndpoint("/sse"),
-		mcpserver.WithMessageEndpoint("/message"),
-	)
-	return sseServer
+func HandlerForBasePath(server *mcp.Server, basePath string) http.Handler {
+	return mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return server })
 }
 
 // ServeStreamableHTTP starts the MCP server using HTTP StreamableHTTP (wraps mcpserver.NewStreamableHTTPServer and Start).
@@ -234,20 +217,9 @@ func HandlerForBasePath(server *mcpserver.MCPServer, basePath string) http.Handl
 //
 //	srv, _ := openapi2mcp.NewServer("petstore", "1.0.0", doc)
 //	openapi2mcp.ServeStreamableHTTP(srv, ":8080", "/custom-base")
-func ServeStreamableHTTP(server *mcpserver.MCPServer, addr string, basePath string) error {
-	streamableAuthContextFunc := func(ctx context.Context, r *http.Request) context.Context {
-		return authContextFunc(ctx, r)
-	}
-
-	if basePath == "" {
-		basePath = "/mcp"
-	}
-
-	streamableServer := mcpserver.NewStreamableHTTPServer(server,
-		mcpserver.WithHTTPContextFunc(streamableAuthContextFunc),
-		mcpserver.WithEndpointPath(basePath),
-	)
-	return streamableServer.Start(addr)
+func ServeStreamableHTTP(server *mcp.Server, addr string, basePath string) error {
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server { return server }, nil)
+	return http.ListenAndServe(addr, handler)
 }
 
 // HandlerForStreamableHTTP returns an http.Handler that serves the given MCP server at the specified basePath using StreamableHTTP.
@@ -256,16 +228,6 @@ func ServeStreamableHTTP(server *mcpserver.MCPServer, addr string, basePath stri
 //
 //	handler := openapi2mcp.HandlerForStreamableHTTP(srv, "/petstore")
 //	mux.Handle("/petstore", handler)
-func HandlerForStreamableHTTP(server *mcpserver.MCPServer, basePath string) http.Handler {
-	streamableAuthContextFunc := func(ctx context.Context, r *http.Request) context.Context {
-		return authContextFunc(ctx, r)
-	}
-	if basePath == "" {
-		basePath = "/mcp"
-	}
-	streamableServer := mcpserver.NewStreamableHTTPServer(server,
-		mcpserver.WithHTTPContextFunc(streamableAuthContextFunc),
-		mcpserver.WithEndpointPath(basePath),
-	)
-	return streamableServer
+func HandlerForStreamableHTTP(server *mcp.Server, basePath string) http.Handler {
+	return mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server { return server }, nil)
 }

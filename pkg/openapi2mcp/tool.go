@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -30,13 +30,19 @@ func toolHandler(
 	baseURLs []string,
 	confirmDangerousActions bool,
 	requestHandler func(req *http.Request) (*http.Response, error),
-) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+) func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 	var schema *gojsonschema.Schema
 
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := req.GetArguments()
-		if args == nil {
+	return func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+		var args map[string]any
+		if params.Arguments == nil {
 			args = map[string]any{}
+		} else {
+			var ok bool
+			args, ok = params.Arguments.(map[string]any)
+			if !ok {
+				args = map[string]any{}
+			}
 		}
 
 		// Build parameter name mapping for escaped parameter names
@@ -57,8 +63,7 @@ func toolHandler(
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: "Validation error: " + err.Error(),
 					},
 				},
@@ -164,7 +169,14 @@ func toolHandler(
 				errorText += "\n\n" + strings.Join(suggestions, "\n")
 			}
 
-			return mcp.NewToolResultError(errorText), nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: errorText,
+					},
+				},
+				IsError: true,
+			}, nil
 		}
 
 		// Build URL path with path parameters
@@ -393,8 +405,7 @@ func toolHandler(
 
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "json",
+						&mcp.TextContent{
 							Text: string(errorJSON),
 						},
 					},
@@ -412,7 +423,14 @@ func toolHandler(
 			}
 			errorText += fmt.Sprintf("\nOperation: %s (%s)", op.OperationID, opSummary)
 
-			return mcp.NewToolResultError(errorText), nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: errorText,
+					},
+				},
+				IsError: true,
+			}, nil
 		}
 
 		// Handle binary/file responses for success
@@ -439,8 +457,7 @@ func toolHandler(
 			resultJSON, _ := json.MarshalIndent(resultObj, "", "  ")
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "json",
+					&mcp.TextContent{
 						Text: string(resultJSON),
 					},
 				},
@@ -452,8 +469,7 @@ func toolHandler(
 		if args["stream"] == true {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: respText,
 					},
 				},
@@ -465,8 +481,7 @@ func toolHandler(
 				confirmText := fmt.Sprintf("⚠️  CONFIRMATION REQUIRED\n\nAction: %s\nThis action is irreversible. Proceed?\n\nTo confirm, retry the call with {\"__confirmed\": true} added to your arguments.", name)
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "text",
+						&mcp.TextContent{
 							Text: confirmText,
 						},
 					},
@@ -476,8 +491,7 @@ func toolHandler(
 
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
+				&mcp.TextContent{
 					Text: respText,
 				},
 			},

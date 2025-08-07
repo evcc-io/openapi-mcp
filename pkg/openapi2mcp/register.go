@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 )
 
 // getParameterValue retrieves a parameter value from args using the escaped parameter name.
@@ -348,7 +349,7 @@ func hasDateTimeInSchema(schema *openapi3.Schema) bool {
 // Also adds tools for externalDocs, info, and describe if present in the OpenAPI spec.
 // The handler validates arguments, builds the HTTP request, and returns the HTTP response as the tool result.
 // Returns the list of tool names registered.
-func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions) []string {
+func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions) []string {
 	baseURLs := []string{}
 	if os.Getenv("OPENAPI_BASE_URL") != "" {
 		baseURLs = append(baseURLs, os.Getenv("OPENAPI_BASE_URL"))
@@ -407,7 +408,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			name = opts.NameFormat(name)
 		}
 
-		annotations := mcp.ToolAnnotation{}
+		annotations := mcp.ToolAnnotations{}
 		var titleParts []string
 		if opts != nil && opts.Version != "" {
 			titleParts = append(titleParts, "OpenAPI "+opts.Version)
@@ -419,8 +420,17 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			annotations.Title = strings.Join(titleParts, " | ")
 		}
 
-		tool := mcp.NewToolWithRawSchema(name, desc, inputSchemaJSON)
-		tool.Annotations = annotations
+		inputSchemaObj := &jsonschema.Schema{}
+		if err := json.Unmarshal(inputSchemaJSON, inputSchemaObj); err != nil {
+			inputSchemaObj = nil // fallback to nil if parsing fails
+		}
+		
+		tool := &mcp.Tool{
+			Name: name,
+			Description: desc,
+			InputSchema: inputSchemaObj,
+		}
+		tool.Annotations = &annotations
 		// toolSchemas[name] = inputSchemaJSON
 
 		if opts != nil && opts.DryRun {
@@ -440,7 +450,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			requestHandler = opts.RequestHandler
 		}
 
-		server.AddTool(tool, toolHandler(
+		mcp.AddTool(server, tool, toolHandler(
 			name,
 			op,
 			doc,
@@ -461,20 +471,28 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			"properties": map[string]any{},
 		}
 		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		tool := mcp.NewToolWithRawSchema("externalDocs", desc, inputSchemaJSON)
-		tool.Annotations = mcp.ToolAnnotation{}
+		inputSchemaObj := &jsonschema.Schema{}
+		if err := json.Unmarshal(inputSchemaJSON, inputSchemaObj); err != nil {
+			inputSchemaObj = nil // fallback to nil if parsing fails
+		}
+		
+		tool := &mcp.Tool{
+			Name: "externalDocs",
+			Description: desc,
+			InputSchema: inputSchemaObj,
+		}
+		tool.Annotations = &mcp.ToolAnnotations{}
 		if opts != nil && opts.Version != "" {
 			tool.Annotations.Title = "OpenAPI " + opts.Version
 		}
-		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 			info := "External documentation URL: " + doc.ExternalDocs.URL
 			if doc.ExternalDocs.Description != "" {
 				info += "\nDescription: " + doc.ExternalDocs.Description
 			}
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: info,
 					},
 				},
@@ -492,13 +510,22 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		}
 
 		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		tool := mcp.NewToolWithRawSchema("info", desc, inputSchemaJSON)
-		tool.Annotations = mcp.ToolAnnotation{}
+		inputSchemaObj := &jsonschema.Schema{}
+		if err := json.Unmarshal(inputSchemaJSON, inputSchemaObj); err != nil {
+			inputSchemaObj = nil // fallback to nil if parsing fails
+		}
+		
+		tool := &mcp.Tool{
+			Name: "info",
+			Description: desc,
+			InputSchema: inputSchemaObj,
+		}
+		tool.Annotations = &mcp.ToolAnnotations{}
 		if opts != nil && opts.Version != "" {
 			tool.Annotations.Title = "OpenAPI " + opts.Version
 		}
 
-		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 			var sb strings.Builder
 			if doc.Info.Title != "" {
 				sb.WriteString("Title: " + doc.Info.Title + "\n")
@@ -514,8 +541,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			}
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: strings.TrimSpace(sb.String()),
 					},
 				},
@@ -552,18 +578,20 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			MIMEType:    "application/json",
 		}
 
-		server.AddResource(timestampResource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		server.AddResource(&timestampResource, func(ctx context.Context, session *mcp.ServerSession, params *mcp.ReadResourceParams) (*mcp.ReadResourceResult, error) {
 			now := time.Now().Unix()
 			content := fmt.Sprintf(`{"unix_timestamp": %d, "iso8601": "%s", "timezone": "%s"}`,
 				now,
 				time.Now().Format(time.RFC3339),
 				time.Now().Format("MST"))
 
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{
-					URI:      timestampResource.URI,
-					MIMEType: "application/json",
-					Text:     content,
+			return &mcp.ReadResourceResult{
+				Contents: []*mcp.ResourceContents{
+					&mcp.ResourceContents{
+						URI:      timestampResource.URI,
+						MIMEType: "application/json",
+						Text:     content,
+					},
 				},
 			}, nil
 		})

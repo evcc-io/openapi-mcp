@@ -1,6 +1,6 @@
 // Package openapi2mcp provides functionality for converting OpenAPI specifications to MCP tools.
-// For working with MCP types and tools directly, import github.com/mark3labs/mcp-go/mcp
-// and github.com/mark3labs/mcp-go/server
+// For working with MCP types and tools directly, import github.com/modelcontextprotocol/go-sdk/mcp
+// and github.com/modelcontextprotocol/go-sdk/server
 package openapi2mcp
 
 import (
