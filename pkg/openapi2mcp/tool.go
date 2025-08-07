@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/xeipuuv/gojsonschema"
 )
 
 func defaultRequestHandler(req *http.Request) (*http.Response, error) {
@@ -26,12 +26,13 @@ func toolHandler(
 	name string,
 	op OpenAPIOperation,
 	doc *openapi3.T,
-	inputSchemaJSON []byte,
+	inputSchema jsonschema.Schema,
 	baseURLs []string,
 	confirmDangerousActions bool,
 	requestHandler func(req *http.Request) (*http.Response, error),
 ) func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
-	var schema *gojsonschema.Schema
+	// TODO move to create time
+	resolvedSchema, err := inputSchema.Resolve(nil)
 
 	return func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 		var args map[string]any
@@ -48,96 +49,68 @@ func toolHandler(
 		// Build parameter name mapping for escaped parameter names
 		paramNameMapping := buildParameterNameMapping(op.Parameters)
 
-		// Validate arguments against inputSchema
-		if schema == nil {
-			var err error
-			schema, err = gojsonschema.NewSchema(gojsonschema.NewBytesLoader(inputSchemaJSON))
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		argsJSON, _ := json.Marshal(args)
-		argsLoader := gojsonschema.NewBytesLoader(argsJSON)
-		result, err := schema.Validate(argsLoader)
 		if err != nil {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{
-						Text: "Validation error: " + err.Error(),
-					},
-				},
-				IsError: true,
-			}, nil
+			return nil, err
 		}
 
-		if !result.Valid() {
+		// Validate arguments against inputSchema
+		if err := resolvedSchema.Validate(args); err != nil {
 			var missingFields []string
 			var suggestions []string
-			var errMsgs string
+			errMsg := err.Error()
 
-			// Parse the input schema for property descriptions
-			var schemaObj map[string]any
-			_ = json.Unmarshal(inputSchemaJSON, &schemaObj)
-			properties, _ := schemaObj["properties"].(map[string]any)
+			// Parse the validation error to provide helpful feedback
+			properties := inputSchema.Properties
 
-			for _, verr := range result.Errors() {
-				errMsg := ""
-
-				// Handle different validation error types with plain text messages
-				switch verr.Type() {
-				case "required":
-					if missingRaw, ok := verr.Details()["property"]; ok {
-						if missing, ok := missingRaw.(string); ok {
-							missingFields = append(missingFields, missing)
-							if prop, ok := properties[missing].(map[string]any); ok {
-								desc, _ := prop["description"].(string)
-								typeStr, _ := prop["type"].(string)
-								info := ""
-								if desc != "" {
-									info = desc
-								}
-								if typeStr != "" {
-									if info != "" {
-										info += ", "
-									}
-									info += "type: " + typeStr
-								}
-								if info != "" {
-									errMsg = "Missing required parameter: '" + missing + "' (" + info + "). Please provide this parameter."
-								} else {
-									errMsg = "Missing required parameter: '" + missing + "'"
-								}
-							} else {
-								errMsg = "Missing required parameter: '" + missing + "'"
+			// Handle different validation error types
+			if strings.Contains(errMsg, "required: missing properties:") {
+				// Extract missing properties from the error message
+				// Format: "required: missing properties: [\"field1\", \"field2\"]"
+				if start := strings.Index(errMsg, "["); start != -1 {
+					if end := strings.Index(errMsg[start:], "]"); end != -1 {
+						propsStr := errMsg[start+1 : start+end]
+						// Remove quotes and split by comma
+						propsStr = strings.ReplaceAll(propsStr, `"`, "")
+						if propsStr != "" {
+							missingFields = strings.Split(propsStr, ",")
+							for i, field := range missingFields {
+								missingFields[i] = strings.TrimSpace(field)
 							}
 						}
 					}
-				case "invalid_type":
-					// Convert "Invalid type. Expected: string, given: integer" to plain text
-					errMsg = verr.String()
-				case "enum":
-					// Convert enum validation errors to plain text
-					errMsg = verr.String()
-				case "invalid_union", "one_of", "any_of":
-					// Convert union/oneOf/anyOf errors to plain text
-					errMsg = "Invalid value. " + verr.String()
-				default:
-					// For any other validation error types, ensure it's plain text
-					errMsg = verr.String()
 				}
 
-				if errMsg != "" {
-					errMsgs += errMsg + "\n"
+				// Build detailed error message for missing fields
+				for _, missing := range missingFields {
+					if prop, ok := properties[missing]; ok {
+						desc := prop.Description
+						typeStr := prop.Type
+						info := ""
+						if desc != "" {
+							info = desc
+						}
+						if typeStr != "" {
+							if info != "" {
+								info += ", "
+							}
+							info += "type: " + typeStr
+						}
+						if info != "" {
+							errMsg = "Missing required parameter: '" + missing + "' (" + info + "). Please provide this parameter."
+						} else {
+							errMsg = "Missing required parameter: '" + missing + "'"
+						}
+					} else {
+						errMsg = "Missing required parameter: '" + missing + "'"
+					}
 				}
 			}
 
 			// Suggest a retry with an example argument set
 			exampleArgs := map[string]any{}
-			for k, v := range properties {
-				if prop, ok := v.(map[string]any); ok {
-					typeStr, _ := prop["type"].(string)
-					switch typeStr {
+			for k, prop := range properties {
+				if prop != nil {
+					switch prop.Type {
 					case "string":
 						exampleArgs[k] = "example"
 					case "number":
@@ -164,7 +137,7 @@ func toolHandler(
 			suggestions = append(suggestions, suggestionStr)
 
 			// Create a simple text error message
-			errorText := strings.TrimSpace(errMsgs)
+			errorText := strings.TrimSpace(errMsg)
 			if len(suggestions) > 0 {
 				errorText += "\n\n" + strings.Join(suggestions, "\n")
 			}
@@ -363,15 +336,16 @@ func toolHandler(
 
 			suggestion := "Check the input parameters, authentication, and consult the tool schema. See the OpenAPI documentation for more details."
 
+			// Pass schema directly to error handling functions
 			switch {
 			case resp.StatusCode == 401 || resp.StatusCode == 403:
-				suggestion = generateAI401403ErrorResponse(op, inputSchemaJSON, args, string(respBody), resp.StatusCode)
+				suggestion = generateAI401403ErrorResponse(op, inputSchema, args, string(respBody), resp.StatusCode)
 			case resp.StatusCode == 404:
-				suggestion = generateAI404ErrorResponse(op, inputSchemaJSON, args, string(respBody))
+				suggestion = generateAI404ErrorResponse(op, inputSchema, args, string(respBody))
 			case resp.StatusCode == 400:
-				suggestion = generateAI400ErrorResponse(op, inputSchemaJSON, args, string(respBody))
+				suggestion = generateAI400ErrorResponse(op, inputSchema, args, string(respBody))
 			case resp.StatusCode >= 500:
-				suggestion = generateAI5xxErrorResponse(op, inputSchemaJSON, args, string(respBody), resp.StatusCode)
+				suggestion = generateAI5xxErrorResponse(op, inputSchema, args, string(respBody), resp.StatusCode)
 			}
 
 			// For binary error responses, include base64 and mime type

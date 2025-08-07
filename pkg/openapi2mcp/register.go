@@ -55,7 +55,7 @@ func formatParameterValue(val any, isInteger bool) string {
 
 // generateAIFriendlyDescription creates a comprehensive, AI-optimized description for an operation
 // that includes all the information an AI agent needs to understand how to use the tool.
-func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]any, apiKeyHeader string) string {
+func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema jsonschema.Schema, apiKeyHeader string) string {
 	var desc strings.Builder
 
 	// Start with the original description or summary
@@ -79,37 +79,28 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 	}
 
 	// Extract required parameters first
-	var requiredParams []string
-	switch req := inputSchema["required"].(type) {
-	case []any:
-		for _, r := range req {
-			if str, ok := r.(string); ok {
-				requiredParams = append(requiredParams, str)
-			}
-		}
-	case []string:
-		requiredParams = req
-	}
+	requiredParams := inputSchema.Required
 
 	// Add parameter information with examples
-	if properties, ok := inputSchema["properties"].(map[string]any); ok && len(properties) > 0 {
+	properties := inputSchema.Properties
+	if properties != nil && len(properties) > 0 {
 		desc.WriteString("\n\nPARAMETERS:")
 
 		if len(requiredParams) > 0 {
 			desc.WriteString("\n• Required:")
 			for _, reqStr := range requiredParams {
-				if prop, ok := properties[reqStr].(map[string]any); ok {
+				if prop, ok := properties[reqStr]; ok && prop != nil {
 					desc.WriteString(fmt.Sprintf("\n  - %s", reqStr))
-					if typeStr, ok := prop["type"].(string); ok {
-						desc.WriteString(fmt.Sprintf(" (%s)", typeStr))
+					if prop.Type != "" {
+						desc.WriteString(fmt.Sprintf(" (%s)", prop.Type))
 					}
-					if propDesc, ok := prop["description"].(string); ok && propDesc != "" {
-						desc.WriteString(": " + propDesc)
+					if prop.Description != "" {
+						desc.WriteString(": " + prop.Description)
 					}
 					// Add enum values if present
-					if enum, ok := prop["enum"].([]any); ok && len(enum) > 0 {
+					if len(prop.Enum) > 0 {
 						var enumStrs []string
-						for _, e := range enum {
+						for _, e := range prop.Enum {
 							enumStrs = append(enumStrs, fmt.Sprintf("%v", e))
 						}
 						desc.WriteString(" [values: " + strings.Join(enumStrs, ", ") + "]")
@@ -120,7 +111,7 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 
 		// Optional parameters
 		var optionalParams []string
-		for paramName, paramDef := range properties {
+		for paramName, prop := range properties {
 			isRequired := false
 			for _, reqParam := range requiredParams {
 				if reqParam == paramName {
@@ -128,24 +119,23 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 					break
 				}
 			}
-			if !isRequired {
-				if prop, ok := paramDef.(map[string]any); ok {
-					paramInfo := fmt.Sprintf("  - %s", paramName)
-					if typeStr, ok := prop["type"].(string); ok {
-						paramInfo += fmt.Sprintf(" (%s)", typeStr)
-					}
-					if propDesc, ok := prop["description"].(string); ok && propDesc != "" {
-						paramInfo += ": " + propDesc
-					}
-					if enum, ok := prop["enum"].([]any); ok && len(enum) > 0 {
-						var enumStrs []string
-						for _, e := range enum {
-							enumStrs = append(enumStrs, fmt.Sprintf("%v", e))
-						}
-						paramInfo += " [values: " + strings.Join(enumStrs, ", ") + "]"
-					}
-					optionalParams = append(optionalParams, paramInfo)
+			if !isRequired && prop != nil {
+				paramInfo := fmt.Sprintf("  - %s", paramName)
+				if prop.Type != "" {
+					paramInfo += fmt.Sprintf(" (%s)", prop.Type)
 				}
+				if prop.Description != "" {
+					paramInfo += ": " + prop.Description
+				}
+				// Add enum values if present
+				if len(prop.Enum) > 0 {
+					var enumStrs []string
+					for _, e := range prop.Enum {
+						enumStrs = append(enumStrs, fmt.Sprintf("%v", e))
+					}
+					paramInfo += " [values: " + strings.Join(enumStrs, ", ") + "]"
+				}
+				optionalParams = append(optionalParams, paramInfo)
 			}
 		}
 		if len(optionalParams) > 0 {
@@ -161,23 +151,21 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 	exampleArgs := make(map[string]any)
 
 	// Generate example based on actual parameters
-	if properties, ok := inputSchema["properties"].(map[string]any); ok {
+	if properties != nil {
 		// Add required parameters to example
 		for _, reqStr := range requiredParams {
-			if prop, ok := properties[reqStr].(map[string]any); ok {
-				exampleArgs[reqStr] = generateExampleValue(prop)
+			if prop, ok := properties[reqStr]; ok && prop != nil {
+				exampleArgs[reqStr] = generateExampleValueFromSchema(prop)
 			}
 		}
 		// Add one or two optional parameters to show structure
 		count := 0
-		for paramName, paramDef := range properties {
-			if _, exists := exampleArgs[paramName]; !exists && count < 2 {
-				if prop, ok := paramDef.(map[string]any); ok {
-					// Skip adding optional params if there are already many required ones
-					if len(exampleArgs) < 3 {
-						exampleArgs[paramName] = generateExampleValue(prop)
-						count++
-					}
+		for paramName, prop := range properties {
+			if _, exists := exampleArgs[paramName]; !exists && count < 2 && prop != nil {
+				// Skip adding optional params if there are already many required ones
+				if len(exampleArgs) < 3 {
+					exampleArgs[paramName] = generateExampleValueFromSchema(prop)
+					count++
 				}
 			}
 		}
@@ -245,6 +233,57 @@ func generateExampleValue(prop map[string]any) any {
 	case "array":
 		if items, ok := prop["items"].(map[string]any); ok {
 			return []any{generateExampleValue(items)}
+		}
+		return []any{"item1", "item2"}
+	case "object":
+		return map[string]any{"key": "value"}
+	default:
+		return nil
+	}
+}
+
+// generateExampleValueFromSchema creates appropriate example values based on the jsonschema.Schema
+func generateExampleValueFromSchema(prop *jsonschema.Schema) any {
+	if prop == nil {
+		return nil
+	}
+
+	// Check for enum values first
+	if len(prop.Enum) > 0 {
+		return prop.Enum[0]
+	}
+
+	// Check for example values in schema
+	if len(prop.Examples) > 0 {
+		return prop.Examples[0]
+	}
+
+	// Generate based on type
+	switch prop.Type {
+	case "string":
+		switch prop.Format {
+		case "email":
+			return "user@example.com"
+		case "uri", "url":
+			return "https://example.com"
+		case "date":
+			return "2024-01-01"
+		case "date-time":
+			return "2024-01-01T00:00:00Z"
+		case "uuid":
+			return "123e4567-e89b-12d3-a456-426614174000"
+		default:
+			return "example_string"
+		}
+	case "number":
+		return 123.45
+	case "integer":
+		return 123
+	case "boolean":
+		return true
+	case "array":
+		if prop.Items != nil {
+			return []any{generateExampleValueFromSchema(prop.Items)}
 		}
 		return []any{"item1", "item2"}
 	case "object":
@@ -395,15 +434,12 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		}
 
 		inputSchema := BuildInputSchema(op.Parameters, op.RequestBody)
-		inputSchemaMap := SchemaToMap(inputSchema)
 		if opts != nil && opts.PostProcessSchema != nil {
-			inputSchemaMap = opts.PostProcessSchema(op.OperationID, inputSchemaMap)
-			inputSchema = MapToSchema(inputSchemaMap)
+			inputSchema = opts.PostProcessSchema(op.OperationID, inputSchema)
 		}
-		inputSchemaJSON, _ := json.MarshalIndent(inputSchemaMap, "", "  ")
 
 		// Generate AI-friendly description
-		desc := generateAIFriendlyDescription(op, inputSchemaMap, apiKeyHeader)
+		desc := generateAIFriendlyDescription(op, inputSchema, apiKeyHeader)
 
 		name := op.OperationID
 		if opts != nil && opts.NameFormat != nil {
@@ -451,7 +487,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			name,
 			op,
 			doc,
-			inputSchemaJSON,
+			inputSchema,
 			baseURLs,
 			opts != nil && opts.ConfirmDangerousActions,
 			requestHandler,

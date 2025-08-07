@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 )
 
 // OpenAPIOperation describes a single OpenAPI operation to be mapped to an MCP tool.
@@ -32,14 +33,14 @@ type OpenAPIOperation struct {
 // PostProcessSchema: optional hook to modify each tool's input schema before registration/output
 // ConfirmDangerousActions: if true (default), require confirmation for PUT/POST/DELETE tools
 //
-//	func(toolName string, schema map[string]any) map[string]any
+//	func(toolName string, schema jsonschema.Schema) jsonschema.Schema
 type ToolGenOptions struct {
 	NameFormat              func(string) string
 	TagFilter               []string
 	DryRun                  bool
 	PrettyPrint             bool
 	Version                 string
-	PostProcessSchema       func(toolName string, schema map[string]any) map[string]any
+	PostProcessSchema       func(toolName string, schema jsonschema.Schema) jsonschema.Schema
 	ConfirmDangerousActions bool // if true, add confirmation prompt for dangerous actions
 	RequestHandler          func(req *http.Request) (*http.Response, error)
 }

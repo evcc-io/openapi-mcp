@@ -65,7 +65,7 @@ func extractProperty(s *openapi3.SchemaRef) *jsonschema.Schema {
 	}
 	val := s.Value
 	prop := &jsonschema.Schema{}
-	
+
 	// Handle allOf (merge all subschemas)
 	if len(val.AllOf) > 0 {
 		allOfSchemas := make([]*jsonschema.Schema, len(val.AllOf))
@@ -74,7 +74,7 @@ func extractProperty(s *openapi3.SchemaRef) *jsonschema.Schema {
 		}
 		prop.AllOf = allOfSchemas
 	}
-	
+
 	// Handle oneOf/anyOf
 	if len(val.OneOf) > 0 {
 		fmt.Fprintf(os.Stderr, "[WARN] oneOf used in schema at %p. Only basic support is provided.\n", val)
@@ -92,7 +92,7 @@ func extractProperty(s *openapi3.SchemaRef) *jsonschema.Schema {
 		}
 		prop.AnyOf = anyOfSchemas
 	}
-	
+
 	// Handle discriminator (OpenAPI 3.0/3.1)
 	if val.Discriminator != nil {
 		fmt.Fprintf(os.Stderr, "[WARN] discriminator used in schema at %p. Only basic support is provided.\n", val)
@@ -102,7 +102,7 @@ func extractProperty(s *openapi3.SchemaRef) *jsonschema.Schema {
 		}
 		prop.Extra["discriminator"] = val.Discriminator
 	}
-	
+
 	// Type, format, description, enum, default, example
 	if val.Type != nil && len(*val.Type) > 0 {
 		// Use the first type if multiple types are specified
@@ -124,7 +124,7 @@ func extractProperty(s *openapi3.SchemaRef) *jsonschema.Schema {
 	if val.Example != nil {
 		prop.Examples = []any{val.Example}
 	}
-	
+
 	// Object properties
 	if val.Type != nil && val.Type.Is("object") && val.Properties != nil {
 		prop.Properties = make(map[string]*jsonschema.Schema)
@@ -135,12 +135,12 @@ func extractProperty(s *openapi3.SchemaRef) *jsonschema.Schema {
 			prop.Required = val.Required
 		}
 	}
-	
+
 	// Array items
 	if val.Type != nil && val.Type.Is("array") && val.Items != nil {
 		prop.Items = extractProperty(val.Items)
 	}
-	
+
 	return prop
 }
 
@@ -229,14 +229,6 @@ func BuildInputSchema(params openapi3.Parameters, requestBody *openapi3.RequestB
 func SchemaToMap(schema jsonschema.Schema) map[string]any {
 	schemaBytes, _ := json.Marshal(schema)
 	var result map[string]any
-	json.Unmarshal(schemaBytes, &result)
-	return result
-}
-
-// MapToSchema converts a map[string]any to jsonschema.Schema
-func MapToSchema(m map[string]any) jsonschema.Schema {
-	schemaBytes, _ := json.Marshal(m)
-	var result jsonschema.Schema
 	json.Unmarshal(schemaBytes, &result)
 	return result
 }
