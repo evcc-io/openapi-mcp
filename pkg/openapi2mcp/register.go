@@ -395,13 +395,15 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		}
 
 		inputSchema := BuildInputSchema(op.Parameters, op.RequestBody)
+		inputSchemaMap := SchemaToMap(inputSchema)
 		if opts != nil && opts.PostProcessSchema != nil {
-			inputSchema = opts.PostProcessSchema(op.OperationID, inputSchema)
+			inputSchemaMap = opts.PostProcessSchema(op.OperationID, inputSchemaMap)
+			inputSchema = MapToSchema(inputSchemaMap)
 		}
-		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
+		inputSchemaJSON, _ := json.MarshalIndent(inputSchemaMap, "", "  ")
 
 		// Generate AI-friendly description
-		desc := generateAIFriendlyDescription(op, inputSchema, apiKeyHeader)
+		desc := generateAIFriendlyDescription(op, inputSchemaMap, apiKeyHeader)
 
 		name := op.OperationID
 		if opts != nil && opts.NameFormat != nil {
@@ -420,15 +422,10 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			annotations.Title = strings.Join(titleParts, " | ")
 		}
 
-		inputSchemaObj := &jsonschema.Schema{}
-		if err := json.Unmarshal(inputSchemaJSON, inputSchemaObj); err != nil {
-			inputSchemaObj = nil // fallback to nil if parsing fails
-		}
-		
 		tool := &mcp.Tool{
 			Name: name,
 			Description: desc,
-			InputSchema: inputSchemaObj,
+			InputSchema: &inputSchema,
 		}
 		tool.Annotations = &annotations
 		// toolSchemas[name] = inputSchemaJSON

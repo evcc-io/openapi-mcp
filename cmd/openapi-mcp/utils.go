@@ -63,7 +63,7 @@ func compareWithDiffFile(opts *openapi2mcp.ToolGenOptions, doc *openapi3.T, ops 
 			"name":        name,
 			"description": desc,
 			"tags":        op.Tags,
-			"inputSchema": inputSchema,
+			"inputSchema": openapi2mcp.SchemaToMap(inputSchema),
 		})
 	}
 	curBytes, _ := json.MarshalIndent(toolSummaries, "", "  ")
