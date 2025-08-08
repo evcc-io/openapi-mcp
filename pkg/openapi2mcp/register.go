@@ -483,6 +483,9 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			requestHandler = opts.RequestHandler
 		}
 
+		j, _ := json.MarshalIndent(inputSchema, "", "  ")
+		fmt.Println(string(j))
+
 		mcp.AddTool(server, tool, toolHandler(
 			name,
 			op,
