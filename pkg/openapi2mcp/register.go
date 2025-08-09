@@ -54,7 +54,7 @@ func formatParameterValue(val any, isInteger bool) string {
 
 // generateAIFriendlyDescription creates a comprehensive, AI-optimized description for an operation
 // that includes all the information an AI agent needs to understand how to use the tool.
-func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]any, apiKeyHeader string) string {
+func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]any) string {
 	var desc strings.Builder
 
 	// Start with the original description or summary
@@ -362,16 +362,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		baseURLs = append(baseURLs, "http://localhost:8080")
 	}
 
-	// Extract API key header name from securitySchemes
-	apiKeyHeader := "Fastly-Key" // default fallback
-	if doc.Components != nil && doc.Components.SecuritySchemes != nil {
-		if sec, ok := doc.Components.SecuritySchemes["ApiKeyAuth"]; ok && sec.Value != nil {
-			if sec.Value.Type == "apiKey" && sec.Value.In == "header" && sec.Value.Name != "" {
-				apiKeyHeader = sec.Value.Name
-			}
-		}
-	}
-
 	// Map from operationID to inputSchema JSON for validation
 	// toolSchemas := make(map[string][]byte)
 	var toolNames []string
@@ -400,7 +390,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
 
 		// Generate AI-friendly description
-		desc := generateAIFriendlyDescription(op, inputSchema, apiKeyHeader)
+		desc := generateAIFriendlyDescription(op, inputSchema)
 
 		name := op.OperationID
 		if opts != nil && opts.NameFormat != nil {

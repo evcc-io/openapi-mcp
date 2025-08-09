@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/evcc-io/openapi-mcp/pkg/openapi2mcp"
@@ -474,6 +475,16 @@ func main() {
 
 	ops := openapi2mcp.ExtractFilteredOpenAPIOperations(doc, includeRegex, excludeRegex)
 
+	slices.SortStableFunc(ops, func(a, b openapi2mcp.OpenAPIOperation) int {
+		if tags := slices.Compare(a.Tags, b.Tags); tags != 0 {
+			return tags
+		}
+		if op := strings.Compare(a.OperationID, b.OperationID); op != 0 {
+			return op
+		}
+		return strings.Compare(a.Path, b.Path)
+	})
+
 	// Dispatch to doc, dry-run, or server mode
 	if flags.docFile != "" {
 		handleDocMode(flags, ops, doc)
@@ -485,15 +496,3 @@ func main() {
 	}
 	startServer(flags, ops, doc)
 }
-
-// handleDocMode handles the --doc mode, generating documentation for all tools.
-// func handleDocMode(flags *cliFlags, ops []openapi2mcp.OpenAPIOperation, doc *openapi3.T) {
-// 	// Implementation in doc.go
-// 	panic("handleDocMode not yet implemented")
-// }
-
-// handleDryRunMode handles the --dry-run mode, printing tool schemas and summaries.
-// func handleDryRunMode(flags *cliFlags, ops []openapi2mcp.OpenAPIOperation, doc *openapi3.T) {
-// 	// Implementation in utils.go or a dedicated file
-// 	panic("handleDryRunMode not yet implemented")
-// }
