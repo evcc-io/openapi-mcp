@@ -485,15 +485,3 @@ func main() {
 	}
 	startServer(flags, ops, doc)
 }
-
-// handleDocMode handles the --doc mode, generating documentation for all tools.
-// func handleDocMode(flags *cliFlags, ops []openapi2mcp.OpenAPIOperation, doc *openapi3.T) {
-// 	// Implementation in doc.go
-// 	panic("handleDocMode not yet implemented")
-// }
-
-// handleDryRunMode handles the --dry-run mode, printing tool schemas and summaries.
-// func handleDryRunMode(flags *cliFlags, ops []openapi2mcp.OpenAPIOperation, doc *openapi3.T) {
-// 	// Implementation in utils.go or a dedicated file
-// 	panic("handleDryRunMode not yet implemented")
-// }
