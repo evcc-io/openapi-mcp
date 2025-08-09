@@ -31,9 +31,6 @@ func toolHandler(
 	confirmDangerousActions bool,
 	requestHandler func(req *http.Request) (*http.Response, error),
 ) func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
-	// TODO move to create time
-	resolvedSchema, err := inputSchema.Resolve(nil)
-
 	return func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 		var args map[string]any
 		if params.Arguments == nil {
@@ -48,109 +45,6 @@ func toolHandler(
 
 		// Build parameter name mapping for escaped parameter names
 		paramNameMapping := buildParameterNameMapping(op.Parameters)
-
-		if err != nil {
-			return nil, err
-		}
-
-		// Validate arguments against inputSchema
-		if err := resolvedSchema.Validate(args); err != nil {
-			var missingFields []string
-			var suggestions []string
-			errMsg := err.Error()
-
-			// Parse the validation error to provide helpful feedback
-			properties := inputSchema.Properties
-
-			// Handle different validation error types
-			if strings.Contains(errMsg, "required: missing properties:") {
-				// Extract missing properties from the error message
-				// Format: "required: missing properties: [\"field1\", \"field2\"]"
-				if start := strings.Index(errMsg, "["); start != -1 {
-					if end := strings.Index(errMsg[start:], "]"); end != -1 {
-						propsStr := errMsg[start+1 : start+end]
-						// Remove quotes and split by comma
-						propsStr = strings.ReplaceAll(propsStr, `"`, "")
-						if propsStr != "" {
-							missingFields = strings.Split(propsStr, ",")
-							for i, field := range missingFields {
-								missingFields[i] = strings.TrimSpace(field)
-							}
-						}
-					}
-				}
-
-				// Build detailed error message for missing fields
-				for _, missing := range missingFields {
-					if prop, ok := properties[missing]; ok {
-						desc := prop.Description
-						typeStr := prop.Type
-						info := ""
-						if desc != "" {
-							info = desc
-						}
-						if typeStr != "" {
-							if info != "" {
-								info += ", "
-							}
-							info += "type: " + typeStr
-						}
-						if info != "" {
-							errMsg = "Missing required parameter: '" + missing + "' (" + info + "). Please provide this parameter."
-						} else {
-							errMsg = "Missing required parameter: '" + missing + "'"
-						}
-					} else {
-						errMsg = "Missing required parameter: '" + missing + "'"
-					}
-				}
-			}
-
-			// Suggest a retry with an example argument set
-			exampleArgs := map[string]any{}
-			for k, prop := range properties {
-				if prop != nil {
-					switch prop.Type {
-					case "string":
-						exampleArgs[k] = "example"
-					case "number":
-						exampleArgs[k] = 123.45
-					case "integer":
-						exampleArgs[k] = 123
-					case "boolean":
-						exampleArgs[k] = true
-					case "array":
-						exampleArgs[k] = []any{"item1", "item2"}
-					case "object":
-						exampleArgs[k] = map[string]any{"key": "value"}
-					default:
-						exampleArgs[k] = nil
-					}
-				} else {
-					exampleArgs[k] = nil
-				}
-			}
-
-			suggestionStr := "Try again with: call " + name + " "
-			exampleJSON, _ := json.Marshal(exampleArgs)
-			suggestionStr += string(exampleJSON)
-			suggestions = append(suggestions, suggestionStr)
-
-			// Create a simple text error message
-			errorText := strings.TrimSpace(errMsg)
-			if len(suggestions) > 0 {
-				errorText += "\n\n" + strings.Join(suggestions, "\n")
-			}
-
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{
-						Text: errorText,
-					},
-				},
-				IsError: true,
-			}, nil
-		}
 
 		// Build URL path with path parameters
 		path := op.Path
