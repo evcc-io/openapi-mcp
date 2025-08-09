@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/evcc-io/openapi-mcp/pkg/openapi2mcp"
@@ -473,6 +474,16 @@ func main() {
 	}
 
 	ops := openapi2mcp.ExtractFilteredOpenAPIOperations(doc, includeRegex, excludeRegex)
+
+	slices.SortStableFunc(ops, func(a, b openapi2mcp.OpenAPIOperation) int {
+		if tags := slices.Compare(a.Tags, b.Tags); tags != 0 {
+			return tags
+		}
+		if op := strings.Compare(a.OperationID, b.OperationID); op != 0 {
+			return op
+		}
+		return strings.Compare(a.Path, b.Path)
+	})
 
 	// Dispatch to doc, dry-run, or server mode
 	if flags.docFile != "" {
