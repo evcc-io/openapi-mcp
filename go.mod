@@ -1,4 +1,4 @@
-module github.com/evcc-io/openapi2mcp
+module github.com/evcc-io/openapi-mcp
 
 go 1.23.0
 

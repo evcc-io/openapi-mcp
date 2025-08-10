@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/evcc-io/openapi2mcp"
+	openapi2mcp "github.com/evcc-io/openapi-mcp"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
