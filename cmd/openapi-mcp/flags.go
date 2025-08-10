@@ -14,12 +14,6 @@ type cliFlags struct {
 	extended           bool
 	quiet              bool
 	machine            bool
-	apiKeyFlag         string
-	baseURLFlag        string
-	bearerToken        string
-	basicAuth          string
-	httpAddr           string
-	httpTransport      string // new: sse (default) or streamable
 	includeDescRegex   string
 	excludeDescRegex   string
 	dryRun             bool
@@ -71,12 +65,6 @@ func parseFlags() *cliFlags {
 	// Default to minimal output
 	flags.quiet = true
 	flags.machine = true
-	flag.StringVar(&flags.apiKeyFlag, "api-key", "", "API key for authenticated endpoints (overrides API_KEY env)")
-	flag.StringVar(&flags.baseURLFlag, "base-url", "", "Override the base URL for HTTP calls (overrides OPENAPI_BASE_URL env)")
-	flag.StringVar(&flags.bearerToken, "bearer-token", "", "Bearer token for Authorization header (overrides BEARER_TOKEN env)")
-	flag.StringVar(&flags.basicAuth, "basic-auth", "", "Basic auth (user:pass) for Authorization header (overrides BASIC_AUTH env)")
-	flag.StringVar(&flags.httpAddr, "http", "", "Serve over HTTP on this address (e.g., :8080). For MCP server: serves tools via HTTP. For validate/lint: creates REST API endpoints.")
-	flag.StringVar(&flags.httpTransport, "http-transport", "streamable", "HTTP transport to use for MCP server: 'streamable' (default) or 'sse'")
 	flag.StringVar(&flags.includeDescRegex, "include-desc-regex", "", "Only include APIs whose description matches this regex (overrides INCLUDE_DESC_REGEX env)")
 	flag.StringVar(&flags.excludeDescRegex, "exclude-desc-regex", "", "Exclude APIs whose description matches this regex (overrides EXCLUDE_DESC_REGEX env)")
 	flag.BoolVar(&flags.dryRun, "dry-run", false, "Print the generated MCP tool schemas and exit (do not start the server)")
@@ -101,28 +89,6 @@ func parseFlags() *cliFlags {
 	return &flags
 }
 
-// setEnvFromFlags sets environment variables from CLI flags if provided.
-func setEnvFromFlags(flags *cliFlags) {
-	if flags.apiKeyFlag != "" {
-		os.Setenv("API_KEY", flags.apiKeyFlag)
-	}
-	if flags.baseURLFlag != "" {
-		os.Setenv("OPENAPI_BASE_URL", flags.baseURLFlag)
-	}
-	if flags.bearerToken != "" {
-		os.Setenv("BEARER_TOKEN", flags.bearerToken)
-	}
-	if flags.basicAuth != "" {
-		os.Setenv("BASIC_AUTH", flags.basicAuth)
-	}
-	if flags.includeDescRegex != "" {
-		os.Setenv("INCLUDE_DESC_REGEX", flags.includeDescRegex)
-	}
-	if flags.excludeDescRegex != "" {
-		os.Setenv("EXCLUDE_DESC_REGEX", flags.excludeDescRegex)
-	}
-}
-
 // printHelp prints the CLI help message.
 func printHelp() {
 	fmt.Print(`openapi-mcp: Expose OpenAPI APIs as MCP tools
@@ -140,31 +106,9 @@ Commands:
 
 Examples:
 
-  Basic MCP Server (stdio):
-    openapi-mcp api.yaml                          # Start stdio MCP server
-    openapi-mcp --api-key=key123 api.yaml         # With API authentication
-
-  MCP Server over HTTP (single API):
-    openapi-mcp --http=:8080 api.yaml             # HTTP server on port 8080
-    openapi-mcp --http-transport=sse --http=:8080 api.yaml  # Use SSE transport
-    openapi-mcp --http=:8080 --extended api.yaml  # With human-friendly output
-
-  MCP Server over HTTP (multiple APIs):
-    openapi-mcp --http=:8080 --mount /petstore:petstore.yaml --mount /books:books.yaml
-    # Each API is served at its own base path (e.g., /petstore, /books) using StreamableHTTP by default
-    # If --mount is used, positional OpenAPI spec arguments are ignored in HTTP mode.
-
-    # With authentication via HTTP headers:
-    curl -H "X-API-Key: your_key" http://localhost:8080/mcp -d '...'
-    curl -H "Authorization: Bearer your_token" http://localhost:8080/mcp -d '...'
-
   Validation & Linting:
     openapi-mcp validate api.yaml                 # Check for critical issues
     openapi-mcp lint api.yaml                     # Comprehensive linting
-
-  HTTP Validation/Linting Services:
-    openapi-mcp --http=:8080 validate             # REST API for validation
-    openapi-mcp --http=:8080 lint                 # REST API for linting
 
   Filtering & Documentation:
     openapi-mcp filter --tag=admin api.yaml              # Only admin operations
@@ -175,23 +119,11 @@ Examples:
     openapi-mcp filter --function-list-file=funcs.txt api.yaml # Output only operations listed in funcs.txt
 
   Advanced Configuration:
-    openapi-mcp --base-url=https://api.prod.com api.yaml    # Override base URL
     openapi-mcp --include-desc-regex="user.*" api.yaml      # Filter by description
     openapi-mcp --no-confirm-dangerous api.yaml             # Skip confirmations
-    openapi-mcp --http-transport=sse --http=:8080 api.yaml  # Use SSE transport
 
 Flags:
   --extended           Enable extended (human-friendly) output (default: minimal/agent)
-  --api-key            API key for authenticated endpoints
-  --base-url           Override the base URL for HTTP calls
-  --bearer-token       Bearer token for Authorization header
-  --basic-auth         Basic auth (user:pass) for Authorization header
-  --http               Serve over HTTP on this address (e.g., :8080). For MCP server: serves tools via HTTP. For validate/lint: creates REST API endpoints.
-                       In HTTP mode, authentication can also be provided via headers:
-                       X-API-Key, Api-Key (for API keys)
-                       Authorization: Bearer <token> (for bearer tokens)
-                       Authorization: Basic <credentials> (for basic auth)
-  --http-transport     HTTP transport to use for MCP server: 'streamable' (default) or 'sse'
   --include-desc-regex Only include APIs whose description matches this regex
   --exclude-desc-regex Exclude APIs whose description matches this regex
   --dry-run            Print the generated MCP tool schemas as JSON and exit
@@ -209,13 +141,6 @@ Flags:
   --help, -h           Show help
 
 By default, output is minimal and agent-friendly. Use --extended for banners, help, and human-readable output.
-
-HTTP API Usage (for validate/lint commands):
-  curl -X POST http://localhost:8080/validate \
-    -H "Content-Type: application/json" \
-    -d '{"openapi_spec": "..."}'
-
-  # Endpoints: POST /validate, POST /lint, GET /health
 `)
 	os.Exit(0)
 }

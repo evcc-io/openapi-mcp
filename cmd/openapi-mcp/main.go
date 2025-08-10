@@ -146,19 +146,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Set env vars from flags if provided
-	setEnvFromFlags(flags)
-
 	args := flags.args
-
-	// If --mount is used with --http, do not require a positional argument
-	if flags.httpAddr != "" && len(flags.mounts) > 0 {
-		if len(args) > 0 {
-			fmt.Fprintln(os.Stderr, "[WARN] Positional OpenAPI spec arguments are ignored when using --mount. Only --mount will be used.")
-		}
-		startServer(flags, nil, nil)
-		return
-	}
 
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Error: missing required <openapi-spec-path> argument.")
@@ -182,16 +170,6 @@ func main() {
 	// --- Validate subcommand ---
 	if args[0] == "validate" {
 		// Check if HTTP mode is requested
-		if flags.httpAddr != "" {
-			fmt.Fprintf(os.Stderr, "Starting OpenAPI validation HTTP server on %s\n", flags.httpAddr)
-			err := openapi2mcp.ServeHTTPLint(flags.httpAddr, false)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "HTTP server failed: %v\n", err)
-				os.Exit(1)
-			}
-			return
-		}
-
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Error: missing required <openapi-spec-path> argument for validate.")
 			os.Exit(1)
@@ -222,17 +200,6 @@ func main() {
 
 	// --- Lint subcommand ---
 	if args[0] == "lint" {
-		// Check if HTTP mode is requested
-		if flags.httpAddr != "" {
-			fmt.Fprintf(os.Stderr, "Starting OpenAPI linting HTTP server on %s\n", flags.httpAddr)
-			err := openapi2mcp.ServeHTTPLint(flags.httpAddr, true)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "HTTP server failed: %v\n", err)
-				os.Exit(1)
-			}
-			return
-		}
-
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "Error: missing required <openapi-spec-path> argument for lint.")
 			os.Exit(1)
@@ -494,5 +461,7 @@ func main() {
 		handleDryRunMode(flags, ops, doc)
 		return
 	}
-	startServer(flags, ops, doc)
+
+	fmt.Fprintln(os.Stderr, "Error: missing command")
+	os.Exit(1)
 }
