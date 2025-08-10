@@ -54,7 +54,7 @@ func formatParameterValue(val any, isInteger bool) string {
 
 // generateAIFriendlyDescription creates a comprehensive, AI-optimized description for an operation
 // that includes all the information an AI agent needs to understand how to use the tool.
-func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]any) string {
+func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema jsonschema.Schema) string {
 	var desc strings.Builder
 
 	// Start with the original description or summary
