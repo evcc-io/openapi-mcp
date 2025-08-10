@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/evcc-io/openapi-mcp/pkg/openapi2mcp"
+	"github.com/evcc-io/openapi2mcp"
 	"github.com/getkin/kin-openapi/openapi3"
 	"go.yaml.in/yaml/v3"
 )

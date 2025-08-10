@@ -82,7 +82,7 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema jsonschema.S
 
 	// Add parameter information with examples
 	properties := inputSchema.Properties
-	if properties != nil && len(properties) > 0 {
+	if len(properties) > 0 {
 		desc.WriteString("\n\nPARAMETERS:")
 
 		if len(requiredParams) > 0 {
