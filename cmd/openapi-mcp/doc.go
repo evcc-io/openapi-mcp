@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	openapi2mcp "github.com/evcc-io/openapi-mcp"
@@ -71,6 +73,7 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 		return err
 	}
 	defer f.Close()
+
 	f.WriteString("# MCP Tools Documentation\n\n")
 	if doc.Info != nil {
 		f.WriteString(fmt.Sprintf("**API Title:** %s\n\n", doc.Info.Title))
@@ -79,15 +82,19 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 			f.WriteString(doc.Info.Description + "\n\n")
 		}
 	}
+
 	for _, m := range summaries {
 		name, _ := m["name"].(string)
 		desc, _ := m["description"].(string)
 		tags, _ := m["tags"].([]any)
 		inputSchema, _ := m["inputSchema"].(map[string]any)
+
 		f.WriteString(fmt.Sprintf("## %s\n\n", name))
 		if desc != "" {
 			f.WriteString(desc + "\n\n")
 		}
+
+		// Tags
 		if len(tags) > 0 {
 			tagStrs := make([]string, len(tags))
 			for i, t := range tags {
@@ -95,23 +102,27 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 			}
 			f.WriteString(fmt.Sprintf("**Tags:** %s\n\n", strings.Join(tagStrs, ", ")))
 		}
+
 		// Arguments
 		props, _ := inputSchema["properties"].(map[string]any)
+		propsOrder := slices.Sorted(maps.Keys(props))
+
 		if len(props) > 0 {
 			f.WriteString("**Arguments:**\n\n")
 			f.WriteString("| Name | Type | Description |\n|------|------|-------------|\n")
-			for name, v := range props {
-				vmap, _ := v.(map[string]any)
+			for _, name := range propsOrder {
+				vmap, _ := props[name].(map[string]any)
 				typeStr, _ := vmap["type"].(string)
 				desc, _ := vmap["description"].(string)
 				f.WriteString(fmt.Sprintf("| %s | %s | %s |\n", name, typeStr, desc))
 			}
 			f.WriteString("\n")
 		}
+
 		// Example call (best effort)
 		example := map[string]any{}
-		for name, v := range props {
-			vmap, _ := v.(map[string]any)
+		for _, name := range propsOrder {
+			vmap, _ := props[name].(map[string]any)
 			typeStr, _ := vmap["type"].(string)
 			descStr, _ := vmap["description"].(string)
 			if typeStr == "string" && strings.Contains(strings.ToLower(descStr), "integer") {
@@ -131,6 +142,7 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 				example[name] = "..."
 			}
 		}
+
 		if len(example) > 0 {
 			exampleJSON, _ := json.MarshalIndent(example, "", "  ")
 			f.WriteString("**Example call:**\n\n")
