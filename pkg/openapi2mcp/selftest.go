@@ -205,8 +205,8 @@ func SelfTestOpenAPIMCP(doc *openapi3.T, toolNames []string) error {
 		}
 		// Schema required argument checks
 		inputSchema := BuildInputSchema(op.Parameters, op.RequestBody)
-		props, _ := inputSchema["properties"].(map[string]any)
-		if reqList, ok := inputSchema["required"].([]string); ok {
+		props := inputSchema.Properties
+		if reqList := inputSchema.Required; len(reqList) > 0 {
 			for _, req := range reqList {
 				if _, ok := props[req]; !ok {
 					fmt.Fprintf(os.Stderr, "[ERROR] Tool '%s' is missing required argument '%s' in schema.\n", op.OperationID, req)
@@ -228,7 +228,7 @@ func SelfTestOpenAPIMCP(doc *openapi3.T, toolNames []string) error {
 			}
 		}
 		// Cross-field consistency: check if required parameters are mentioned in summary or description
-		if reqList, ok := inputSchema["required"].([]string); ok {
+		if reqList := inputSchema.Required; len(reqList) > 0 {
 			for _, req := range reqList {
 				mentioned := false
 				if op.Summary != "" && containsWord(op.Summary, req) {
@@ -357,8 +357,8 @@ func SelfTestOpenAPIMCPWithOptions(doc *openapi3.T, toolNames []string, detailed
 		}
 		// Schema required argument checks
 		inputSchema := BuildInputSchema(op.Parameters, op.RequestBody)
-		props, _ := inputSchema["properties"].(map[string]any)
-		if reqList, ok := inputSchema["required"].([]string); ok {
+		props := inputSchema.Properties
+		if reqList := inputSchema.Required; len(reqList) > 0 {
 			for _, req := range reqList {
 				if _, ok := props[req]; !ok {
 					fmt.Fprintf(os.Stderr, "[ERROR] Tool '%s' is missing required argument '%s' in schema.\n", op.OperationID, req)

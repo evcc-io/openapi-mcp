@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func stringPtr(s string) *string {
@@ -55,7 +55,8 @@ func toolSetEqual(a, b []string) bool {
 
 func TestRegisterOpenAPITools_Basic(t *testing.T) {
 	doc := minimalOpenAPIDoc()
-	srv := server.NewMCPServer("test", "1.0.0")
+	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
+	srv := mcp.NewServer(impl, nil)
 	ops := ExtractOpenAPIOperations(doc)
 	opts := &ToolGenOptions{}
 	names := RegisterOpenAPITools(srv, ops, doc, opts)
@@ -71,7 +72,8 @@ func TestRegisterOpenAPITools_TagFilter(t *testing.T) {
 	if pathItem != nil && pathItem.Get != nil {
 		pathItem.Get.Tags = []string{"bar"}
 	}
-	srv := server.NewMCPServer("test", "1.0.0")
+	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
+	srv := mcp.NewServer(impl, nil)
 	ops := ExtractOpenAPIOperations(doc)
 	opts := &ToolGenOptions{
 		TagFilter: []string{"baz"}, // should filter out
@@ -85,7 +87,8 @@ func TestRegisterOpenAPITools_TagFilter(t *testing.T) {
 
 func TestSelfTestOpenAPIMCP_Pass(t *testing.T) {
 	doc := minimalOpenAPIDoc()
-	srv := server.NewMCPServer("test", "1.0.0")
+	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
+	srv := mcp.NewServer(impl, nil)
 	ops := ExtractOpenAPIOperations(doc)
 	opts := &ToolGenOptions{}
 	RegisterOpenAPITools(srv, ops, doc, opts)
@@ -163,41 +166,38 @@ func TestNumberVsIntegerTypes(t *testing.T) {
 	inputSchema := BuildInputSchema(op.Parameters, op.RequestBody)
 
 	// The schema should be valid and not cause any errors when processed
-	if inputSchema == nil {
-		t.Fatal("Input schema is nil")
+	if inputSchema.Properties == nil {
+		t.Fatal("Input schema properties is nil")
 	}
 
 	// Verify that the schema contains the expected properties
-	props, ok := inputSchema["properties"].(map[string]any)
-	if !ok {
-		t.Fatal("Schema properties not found")
-	}
+	props := inputSchema.Properties
 
 	// Should have requestBody property
-	requestBodyProp, ok := props["requestBody"].(map[string]any)
+	requestBodyProp, ok := props["requestBody"]
 	if !ok {
 		t.Fatal("requestBody property not found")
 	}
 
 	// Check that requestBody has the correct nested properties
-	requestBodyProps, ok := requestBodyProp["properties"].(map[string]any)
-	if !ok {
+	requestBodyProps := requestBodyProp.Properties
+	if requestBodyProps == nil {
 		t.Fatal("requestBody properties not found")
 	}
 
 	// Verify integerField has type integer
-	if intField, ok := requestBodyProps["integerField"].(map[string]any); ok {
-		if fieldType, ok := intField["type"].(string); !ok || fieldType != "integer" {
-			t.Errorf("Expected integerField to have type 'integer', got '%v'", fieldType)
+	if intField, ok := requestBodyProps["integerField"]; ok {
+		if intField.Type != "integer" {
+			t.Errorf("Expected integerField to have type 'integer', got '%v'", intField.Type)
 		}
 	} else {
 		t.Error("integerField not found in schema")
 	}
 
 	// Verify numberField has type number
-	if numField, ok := requestBodyProps["numberField"].(map[string]any); ok {
-		if fieldType, ok := numField["type"].(string); !ok || fieldType != "number" {
-			t.Errorf("Expected numberField to have type 'number', got '%v'", fieldType)
+	if numField, ok := requestBodyProps["numberField"]; ok {
+		if numField.Type != "number" {
+			t.Errorf("Expected numberField to have type 'number', got '%v'", numField.Type)
 		}
 	} else {
 		t.Error("numberField not found in schema")
@@ -260,52 +260,52 @@ func TestFormatPreservation(t *testing.T) {
 	inputSchema := BuildInputSchema(op.Parameters, op.RequestBody)
 
 	// Navigate to request body properties
-	props, ok := inputSchema["properties"].(map[string]any)
-	if !ok {
+	props := inputSchema.Properties
+	if props == nil {
 		t.Fatal("Schema properties not found")
 	}
 
-	requestBodyProp, ok := props["requestBody"].(map[string]any)
+	requestBodyProp, ok := props["requestBody"]
 	if !ok {
 		t.Fatal("requestBody property not found")
 	}
 
-	requestBodyProps, ok := requestBodyProp["properties"].(map[string]any)
-	if !ok {
+	requestBodyProps := requestBodyProp.Properties
+	if requestBodyProps == nil {
 		t.Fatal("requestBody properties not found")
 	}
 
 	// Verify format preservation for int32Field
-	if int32Field, ok := requestBodyProps["int32Field"].(map[string]any); ok {
-		if format, ok := int32Field["format"].(string); !ok || format != "int32" {
-			t.Errorf("Expected int32Field to have format 'int32', got '%v'", format)
+	if int32Field, ok := requestBodyProps["int32Field"]; ok {
+		if int32Field.Format != "int32" {
+			t.Errorf("Expected int32Field to have format 'int32', got '%v'", int32Field.Format)
 		}
-		if fieldType, ok := int32Field["type"].(string); !ok || fieldType != "integer" {
-			t.Errorf("Expected int32Field to have type 'integer', got '%v'", fieldType)
+		if int32Field.Type != "integer" {
+			t.Errorf("Expected int32Field to have type 'integer', got '%v'", int32Field.Type)
 		}
 	} else {
 		t.Error("int32Field not found in schema")
 	}
 
 	// Verify format preservation for floatField
-	if floatField, ok := requestBodyProps["floatField"].(map[string]any); ok {
-		if format, ok := floatField["format"].(string); !ok || format != "float" {
-			t.Errorf("Expected floatField to have format 'float', got '%v'", format)
+	if floatField, ok := requestBodyProps["floatField"]; ok {
+		if floatField.Format != "float" {
+			t.Errorf("Expected floatField to have format 'float', got '%v'", floatField.Format)
 		}
-		if fieldType, ok := floatField["type"].(string); !ok || fieldType != "number" {
-			t.Errorf("Expected floatField to have type 'number', got '%v'", fieldType)
+		if floatField.Type != "number" {
+			t.Errorf("Expected floatField to have type 'number', got '%v'", floatField.Type)
 		}
 	} else {
 		t.Error("floatField not found in schema")
 	}
 
 	// Verify format preservation for dateField
-	if dateField, ok := requestBodyProps["dateField"].(map[string]any); ok {
-		if format, ok := dateField["format"].(string); !ok || format != "date" {
-			t.Errorf("Expected dateField to have format 'date', got '%v'", format)
+	if dateField, ok := requestBodyProps["dateField"]; ok {
+		if dateField.Format != "date" {
+			t.Errorf("Expected dateField to have format 'date', got '%v'", dateField.Format)
 		}
-		if fieldType, ok := dateField["type"].(string); !ok || fieldType != "string" {
-			t.Errorf("Expected dateField to have type 'string', got '%v'", fieldType)
+		if dateField.Type != "string" {
+			t.Errorf("Expected dateField to have type 'string', got '%v'", dateField.Type)
 		}
 	} else {
 		t.Error("dateField not found in schema")
@@ -476,13 +476,13 @@ func TestBracketParameterHandling(t *testing.T) {
 	inputSchema := BuildInputSchema(op.Parameters, op.RequestBody)
 
 	// The schema should be valid and not cause any errors when processed
-	if inputSchema == nil {
-		t.Fatal("Input schema is nil")
+	if inputSchema.Properties == nil {
+		t.Fatal("Input schema properties is nil")
 	}
 
 	// Verify that the schema contains the escaped parameter names
-	props, ok := inputSchema["properties"].(map[string]any)
-	if !ok {
+	props := inputSchema.Properties
+	if props == nil {
 		t.Fatal("Schema properties not found")
 	}
 

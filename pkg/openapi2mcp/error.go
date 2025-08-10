@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 )
 
 // generateAI400ErrorResponse creates a comprehensive, AI-optimized error response for 400 HTTP errors
 // that helps agents understand how to correctly use the tool.
-func generateAI400ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, args map[string]any, responseBody string) string {
+func generateAI400ErrorResponse(op OpenAPIOperation, inputSchema jsonschema.Schema, args map[string]any, responseBody string) string {
 	var response strings.Builder
 
 	// Start with clear explanation
@@ -25,28 +27,26 @@ func generateAI400ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, arg
 	}
 	response.WriteString("\n")
 
-	// Parse the input schema to provide detailed parameter guidance
-	var schemaObj map[string]any
-	_ = json.Unmarshal(inputSchemaJSON, &schemaObj)
+	// Use the input schema to provide detailed parameter guidance
+	properties := inputSchema.Properties
+	required := inputSchema.Required
 
-	if properties, ok := schemaObj["properties"].(map[string]any); ok && len(properties) > 0 {
+	if len(properties) > 0 {
 		response.WriteString("PARAMETER REQUIREMENTS:\n")
 
 		// Required parameters
-		if required, ok := schemaObj["required"].([]any); ok && len(required) > 0 {
+		if len(required) > 0 {
 			response.WriteString("• Required parameters:\n")
-			for _, req := range required {
-				if reqStr, ok := req.(string); ok {
-					if prop, ok := properties[reqStr].(map[string]any); ok {
-						response.WriteString(fmt.Sprintf("  - %s", reqStr))
-						if typeStr, ok := prop["type"].(string); ok {
-							response.WriteString(fmt.Sprintf(" (%s)", typeStr))
-						}
-						if desc, ok := prop["description"].(string); ok && desc != "" {
-							response.WriteString(fmt.Sprintf(": %s", desc))
-						}
-						response.WriteString("\n")
+			for _, reqStr := range required {
+				if prop, ok := properties[reqStr]; ok && prop != nil {
+					response.WriteString(fmt.Sprintf("  - %s", reqStr))
+					if prop.Type != "" {
+						response.WriteString(fmt.Sprintf(" (%s)", prop.Type))
 					}
+					if prop.Description != "" {
+						response.WriteString(fmt.Sprintf(": %s", prop.Description))
+					}
+					response.WriteString("\n")
 				}
 			}
 			response.WriteString("\n")
@@ -54,35 +54,33 @@ func generateAI400ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, arg
 
 		// All parameters with details
 		response.WriteString("• All available parameters:\n")
-		for paramName, paramDef := range properties {
-			if prop, ok := paramDef.(map[string]any); ok {
+		for paramName, prop := range properties {
+			if prop != nil {
 				response.WriteString(fmt.Sprintf("  - %s", paramName))
 
 				// Type information
-				if typeStr, ok := prop["type"].(string); ok {
-					response.WriteString(fmt.Sprintf(" (%s)", typeStr))
+				if prop.Type != "" {
+					response.WriteString(fmt.Sprintf(" (%s)", prop.Type))
 				}
 
 				// Required indicator
-				if required, ok := schemaObj["required"].([]any); ok {
-					for _, req := range required {
-						if reqStr, ok := req.(string); ok && reqStr == paramName {
-							response.WriteString(" [REQUIRED]")
-							break
-						}
+				for _, reqStr := range required {
+					if reqStr == paramName {
+						response.WriteString(" [REQUIRED]")
+						break
 					}
 				}
 
 				// Description
-				if desc, ok := prop["description"].(string); ok && desc != "" {
-					response.WriteString(fmt.Sprintf(": %s", desc))
+				if prop.Description != "" {
+					response.WriteString(fmt.Sprintf(": %s", prop.Description))
 				}
 
 				// Enum values
-				if enum, ok := prop["enum"].([]any); ok && len(enum) > 0 {
+				if len(prop.Enum) > 0 {
 					response.WriteString(" | Valid values: ")
 					var enumStrs []string
-					for _, e := range enum {
+					for _, e := range prop.Enum {
 						enumStrs = append(enumStrs, fmt.Sprintf("%v", e))
 					}
 					response.WriteString(strings.Join(enumStrs, ", "))
@@ -111,28 +109,22 @@ func generateAI400ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, arg
 
 	// Generate example with correct parameters
 	response.WriteString("EXAMPLE CORRECT USAGE:\n")
-	if properties, ok := schemaObj["properties"].(map[string]any); ok {
+	if len(properties) > 0 {
 		exampleArgs := map[string]any{}
 
 		// Prioritize required parameters
-		if required, ok := schemaObj["required"].([]any); ok {
-			for _, req := range required {
-				if reqStr, ok := req.(string); ok {
-					if prop, ok := properties[reqStr].(map[string]any); ok {
-						exampleArgs[reqStr] = generateExampleValue(prop)
-					}
-				}
+		for _, reqStr := range required {
+			if prop, ok := properties[reqStr]; ok && prop != nil {
+				exampleArgs[reqStr] = generateExampleValueFromSchema(prop)
 			}
 		}
 
 		// Add some optional parameters for completeness
 		count := 0
-		for paramName, paramDef := range properties {
-			if _, exists := exampleArgs[paramName]; !exists && count < 3 {
-				if prop, ok := paramDef.(map[string]any); ok {
-					exampleArgs[paramName] = generateExampleValue(prop)
-					count++
-				}
+		for paramName, prop := range properties {
+			if _, exists := exampleArgs[paramName]; !exists && count < 3 && prop != nil {
+				exampleArgs[paramName] = generateExampleValueFromSchema(prop)
+				count++
 			}
 		}
 
@@ -153,7 +145,7 @@ func generateAI400ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, arg
 }
 
 // generateAI401403ErrorResponse creates comprehensive, AI-optimized error response for authentication/authorization failures
-func generateAI401403ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, args map[string]any, responseBody string, statusCode int) string {
+func generateAI401403ErrorResponse(op OpenAPIOperation, inputSchema jsonschema.Schema, args map[string]any, responseBody string, statusCode int) string {
 	var response strings.Builder
 
 	if statusCode == 401 {
@@ -170,8 +162,7 @@ func generateAI401403ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, 
 	response.WriteString("\n\n")
 
 	// Parse security requirements from the operation
-	var schemaObj map[string]any
-	_ = json.Unmarshal(inputSchemaJSON, &schemaObj)
+	// Note: inputSchema is now available directly as jsonschema.Schema
 
 	response.WriteString("AUTHENTICATION METHODS:\n")
 	if len(op.Security) > 0 {
@@ -234,7 +225,7 @@ func generateAI401403ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, 
 }
 
 // generateAI404ErrorResponse creates comprehensive, AI-optimized error response for resource not found errors
-func generateAI404ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, args map[string]any, responseBody string) string {
+func generateAI404ErrorResponse(op OpenAPIOperation, inputSchema jsonschema.Schema, args map[string]any, responseBody string) string {
 	var response strings.Builder
 
 	response.WriteString("RESOURCE NOT FOUND (404): The requested resource could not be found.\n\n")
@@ -302,7 +293,7 @@ func generateAI404ErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, arg
 }
 
 // generateAI5xxErrorResponse creates comprehensive, AI-optimized error response for server errors
-func generateAI5xxErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, args map[string]any, responseBody string, statusCode int) string {
+func generateAI5xxErrorResponse(op OpenAPIOperation, inputSchema jsonschema.Schema, args map[string]any, responseBody string, statusCode int) string {
 	var response strings.Builder
 
 	response.WriteString(fmt.Sprintf("SERVER ERROR (%d): The server encountered an error processing your request.\n\n", statusCode))
@@ -377,29 +368,27 @@ func generateAI5xxErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, arg
 	response.WriteString("• Report persistent errors to the API provider\n")
 
 	// Add tool usage information for AI agents
-	var schemaObj map[string]any
-	_ = json.Unmarshal(inputSchemaJSON, &schemaObj)
+	properties := inputSchema.Properties
+	required := inputSchema.Required
 
-	if properties, ok := schemaObj["properties"].(map[string]any); ok && len(properties) > 0 {
+	if len(properties) > 0 {
 		response.WriteString("\nTOOL USAGE INFORMATION:\n")
 		response.WriteString(fmt.Sprintf("Tool Name: %s\n", op.OperationID))
 
 		// Show required parameters
-		if required, ok := schemaObj["required"].([]any); ok && len(required) > 0 {
+		if len(required) > 0 {
 			response.WriteString("Required Parameters (mandatory for all calls):\n")
-			for _, req := range required {
-				if reqStr, ok := req.(string); ok {
-					if prop, ok := properties[reqStr].(map[string]any); ok {
-						response.WriteString(fmt.Sprintf("  - %s", reqStr))
-						if typeStr, ok := prop["type"].(string); ok {
-							response.WriteString(fmt.Sprintf(" (%s)", typeStr))
-						}
-						if desc, ok := prop["description"].(string); ok && desc != "" {
-							response.WriteString(fmt.Sprintf(": %s", desc))
-						}
-						response.WriteString(" [MANDATORY]")
-						response.WriteString("\n")
+			for _, reqStr := range required {
+				if prop, ok := properties[reqStr]; ok && prop != nil {
+					response.WriteString(fmt.Sprintf("  - %s", reqStr))
+					if prop.Type != "" {
+						response.WriteString(fmt.Sprintf(" (%s)", prop.Type))
 					}
+					if prop.Description != "" {
+						response.WriteString(fmt.Sprintf(": %s", prop.Description))
+					}
+					response.WriteString(" [MANDATORY]")
+					response.WriteString("\n")
 				}
 			}
 		}
@@ -409,24 +398,18 @@ func generateAI5xxErrorResponse(op OpenAPIOperation, inputSchemaJSON []byte, arg
 		exampleArgs := map[string]any{}
 
 		// Add required parameters to example
-		if required, ok := schemaObj["required"].([]any); ok {
-			for _, req := range required {
-				if reqStr, ok := req.(string); ok {
-					if prop, ok := properties[reqStr].(map[string]any); ok {
-						exampleArgs[reqStr] = generateExampleValue(prop)
-					}
-				}
+		for _, reqStr := range required {
+			if prop, ok := properties[reqStr]; ok && prop != nil {
+				exampleArgs[reqStr] = generateExampleValueFromSchema(prop)
 			}
 		}
 
 		// Add a few optional parameters for completeness
 		count := 0
-		for paramName, paramDef := range properties {
-			if _, exists := exampleArgs[paramName]; !exists && count < 2 {
-				if prop, ok := paramDef.(map[string]any); ok {
-					exampleArgs[paramName] = generateExampleValue(prop)
-					count++
-				}
+		for paramName, prop := range properties {
+			if _, exists := exampleArgs[paramName]; !exists && count < 2 && prop != nil {
+				exampleArgs[paramName] = generateExampleValueFromSchema(prop)
+				count++
 			}
 		}
 

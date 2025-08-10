@@ -30,7 +30,7 @@ func handleDocMode(flags *cliFlags, ops []openapi2mcp.OpenAPIOperation, doc *ope
 			"name":        name,
 			"description": desc,
 			"tags":        op.Tags,
-			"inputSchema": inputSchema,
+			"inputSchema": openapi2mcp.SchemaToMap(inputSchema),
 		})
 	}
 	jsonBytes, _ := json.MarshalIndent(toolSummaries, "", "  ")

@@ -23,19 +23,18 @@ func TestBuildInputSchema_Basic(t *testing.T) {
 		}},
 	}
 	schema := BuildInputSchema(params, nil)
-	props, _ := schema["properties"].(map[string]any)
-	if _, ok := props["foo"]; !ok {
+	if _, ok := schema.Properties["foo"]; !ok {
 		t.Fatalf("expected property 'foo' in schema")
 	}
-	if req, ok := schema["required"].([]string); !ok || len(req) != 1 || req[0] != "foo" {
-		t.Fatalf("expected 'foo' to be required, got: %v", schema["required"])
+	if len(schema.Required) != 1 || schema.Required[0] != "foo" {
+		t.Fatalf("expected 'foo' to be required, got: %v", schema.Required)
 	}
 }
 
 func TestBuildInputSchema_Empty(t *testing.T) {
 	schema := BuildInputSchema(nil, nil)
-	if props, ok := schema["properties"].(map[string]any); !ok || len(props) != 0 {
-		t.Fatalf("expected empty properties, got: %v", props)
+	if schema.Properties == nil || len(schema.Properties) != 0 {
+		t.Fatalf("expected empty properties, got: %v", schema.Properties)
 	}
 }
 
@@ -44,8 +43,8 @@ func TestBuildInputSchema_Malformed(t *testing.T) {
 		&openapi3.ParameterRef{Value: nil}, // malformed
 	}
 	schema := BuildInputSchema(params, nil)
-	if props, ok := schema["properties"].(map[string]any); !ok || len(props) != 0 {
-		t.Fatalf("expected empty properties for malformed param, got: %v", props)
+	if schema.Properties == nil || len(schema.Properties) != 0 {
+		t.Fatalf("expected empty properties for malformed param, got: %v", schema.Properties)
 	}
 }
 
@@ -65,19 +64,17 @@ func TestBuildInputSchema_RequiredFromBody(t *testing.T) {
 		},
 	}}
 	schema := BuildInputSchema(nil, body)
-	props, _ := schema["properties"].(map[string]any)
-	reqBody, ok := props["requestBody"].(map[string]any)
+	reqBody, ok := schema.Properties["requestBody"]
 	if !ok {
 		t.Fatalf("expected property 'requestBody' in schema")
 	}
-	reqBodyProps, _ := reqBody["properties"].(map[string]any)
-	if _, ok := reqBodyProps["bar"]; !ok {
+	if _, ok := reqBody.Properties["bar"]; !ok {
 		t.Fatalf("expected property 'bar' in requestBody schema")
 	}
-	if req, ok := reqBody["required"].([]string); !ok || len(req) != 1 || req[0] != "bar" {
-		t.Fatalf("expected 'bar' to be required in requestBody, got: %v", reqBody["required"])
+	if len(reqBody.Required) != 1 || reqBody.Required[0] != "bar" {
+		t.Fatalf("expected 'bar' to be required in requestBody, got: %v", reqBody.Required)
 	}
-	if req, ok := schema["required"].([]string); !ok || len(req) != 1 || req[0] != "requestBody" {
-		t.Fatalf("expected 'requestBody' to be required, got: %v", schema["required"])
+	if len(schema.Required) != 1 || schema.Required[0] != "requestBody" {
+		t.Fatalf("expected 'requestBody' to be required, got: %v", schema.Required)
 	}
 }

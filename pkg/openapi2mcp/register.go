@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // getParameterValue retrieves a parameter value from args using the escaped parameter name.
@@ -54,7 +54,7 @@ func formatParameterValue(val any, isInteger bool) string {
 
 // generateAIFriendlyDescription creates a comprehensive, AI-optimized description for an operation
 // that includes all the information an AI agent needs to understand how to use the tool.
-func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]any) string {
+func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema jsonschema.Schema) string {
 	var desc strings.Builder
 
 	// Start with the original description or summary
@@ -78,37 +78,28 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 	}
 
 	// Extract required parameters first
-	var requiredParams []string
-	switch req := inputSchema["required"].(type) {
-	case []any:
-		for _, r := range req {
-			if str, ok := r.(string); ok {
-				requiredParams = append(requiredParams, str)
-			}
-		}
-	case []string:
-		requiredParams = req
-	}
+	requiredParams := inputSchema.Required
 
 	// Add parameter information with examples
-	if properties, ok := inputSchema["properties"].(map[string]any); ok && len(properties) > 0 {
+	properties := inputSchema.Properties
+	if properties != nil && len(properties) > 0 {
 		desc.WriteString("\n\nPARAMETERS:")
 
 		if len(requiredParams) > 0 {
 			desc.WriteString("\n• Required:")
 			for _, reqStr := range requiredParams {
-				if prop, ok := properties[reqStr].(map[string]any); ok {
+				if prop, ok := properties[reqStr]; ok && prop != nil {
 					desc.WriteString(fmt.Sprintf("\n  - %s", reqStr))
-					if typeStr, ok := prop["type"].(string); ok {
-						desc.WriteString(fmt.Sprintf(" (%s)", typeStr))
+					if prop.Type != "" {
+						desc.WriteString(fmt.Sprintf(" (%s)", prop.Type))
 					}
-					if propDesc, ok := prop["description"].(string); ok && propDesc != "" {
-						desc.WriteString(": " + propDesc)
+					if prop.Description != "" {
+						desc.WriteString(": " + prop.Description)
 					}
 					// Add enum values if present
-					if enum, ok := prop["enum"].([]any); ok && len(enum) > 0 {
+					if len(prop.Enum) > 0 {
 						var enumStrs []string
-						for _, e := range enum {
+						for _, e := range prop.Enum {
 							enumStrs = append(enumStrs, fmt.Sprintf("%v", e))
 						}
 						desc.WriteString(" [values: " + strings.Join(enumStrs, ", ") + "]")
@@ -119,7 +110,7 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 
 		// Optional parameters
 		var optionalParams []string
-		for paramName, paramDef := range properties {
+		for paramName, prop := range properties {
 			isRequired := false
 			for _, reqParam := range requiredParams {
 				if reqParam == paramName {
@@ -127,24 +118,23 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 					break
 				}
 			}
-			if !isRequired {
-				if prop, ok := paramDef.(map[string]any); ok {
-					paramInfo := fmt.Sprintf("  - %s", paramName)
-					if typeStr, ok := prop["type"].(string); ok {
-						paramInfo += fmt.Sprintf(" (%s)", typeStr)
-					}
-					if propDesc, ok := prop["description"].(string); ok && propDesc != "" {
-						paramInfo += ": " + propDesc
-					}
-					if enum, ok := prop["enum"].([]any); ok && len(enum) > 0 {
-						var enumStrs []string
-						for _, e := range enum {
-							enumStrs = append(enumStrs, fmt.Sprintf("%v", e))
-						}
-						paramInfo += " [values: " + strings.Join(enumStrs, ", ") + "]"
-					}
-					optionalParams = append(optionalParams, paramInfo)
+			if !isRequired && prop != nil {
+				paramInfo := fmt.Sprintf("  - %s", paramName)
+				if prop.Type != "" {
+					paramInfo += fmt.Sprintf(" (%s)", prop.Type)
 				}
+				if prop.Description != "" {
+					paramInfo += ": " + prop.Description
+				}
+				// Add enum values if present
+				if len(prop.Enum) > 0 {
+					var enumStrs []string
+					for _, e := range prop.Enum {
+						enumStrs = append(enumStrs, fmt.Sprintf("%v", e))
+					}
+					paramInfo += " [values: " + strings.Join(enumStrs, ", ") + "]"
+				}
+				optionalParams = append(optionalParams, paramInfo)
 			}
 		}
 		if len(optionalParams) > 0 {
@@ -160,23 +150,21 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema map[string]a
 	exampleArgs := make(map[string]any)
 
 	// Generate example based on actual parameters
-	if properties, ok := inputSchema["properties"].(map[string]any); ok {
+	if properties != nil {
 		// Add required parameters to example
 		for _, reqStr := range requiredParams {
-			if prop, ok := properties[reqStr].(map[string]any); ok {
-				exampleArgs[reqStr] = generateExampleValue(prop)
+			if prop, ok := properties[reqStr]; ok && prop != nil {
+				exampleArgs[reqStr] = generateExampleValueFromSchema(prop)
 			}
 		}
 		// Add one or two optional parameters to show structure
 		count := 0
-		for paramName, paramDef := range properties {
-			if _, exists := exampleArgs[paramName]; !exists && count < 2 {
-				if prop, ok := paramDef.(map[string]any); ok {
-					// Skip adding optional params if there are already many required ones
-					if len(exampleArgs) < 3 {
-						exampleArgs[paramName] = generateExampleValue(prop)
-						count++
-					}
+		for paramName, prop := range properties {
+			if _, exists := exampleArgs[paramName]; !exists && count < 2 && prop != nil {
+				// Skip adding optional params if there are already many required ones
+				if len(exampleArgs) < 3 {
+					exampleArgs[paramName] = generateExampleValueFromSchema(prop)
+					count++
 				}
 			}
 		}
@@ -244,6 +232,57 @@ func generateExampleValue(prop map[string]any) any {
 	case "array":
 		if items, ok := prop["items"].(map[string]any); ok {
 			return []any{generateExampleValue(items)}
+		}
+		return []any{"item1", "item2"}
+	case "object":
+		return map[string]any{"key": "value"}
+	default:
+		return nil
+	}
+}
+
+// generateExampleValueFromSchema creates appropriate example values based on the jsonschema.Schema
+func generateExampleValueFromSchema(prop *jsonschema.Schema) any {
+	if prop == nil {
+		return nil
+	}
+
+	// Check for enum values first
+	if len(prop.Enum) > 0 {
+		return prop.Enum[0]
+	}
+
+	// Check for example values in schema
+	if len(prop.Examples) > 0 {
+		return prop.Examples[0]
+	}
+
+	// Generate based on type
+	switch prop.Type {
+	case "string":
+		switch prop.Format {
+		case "email":
+			return "user@example.com"
+		case "uri", "url":
+			return "https://example.com"
+		case "date":
+			return "2024-01-01"
+		case "date-time":
+			return "2024-01-01T00:00:00Z"
+		case "uuid":
+			return "123e4567-e89b-12d3-a456-426614174000"
+		default:
+			return "example_string"
+		}
+	case "number":
+		return 123.45
+	case "integer":
+		return 123
+	case "boolean":
+		return true
+	case "array":
+		if prop.Items != nil {
+			return []any{generateExampleValueFromSchema(prop.Items)}
 		}
 		return []any{"item1", "item2"}
 	case "object":
@@ -348,7 +387,7 @@ func hasDateTimeInSchema(schema *openapi3.Schema) bool {
 // Also adds tools for externalDocs, info, and describe if present in the OpenAPI spec.
 // The handler validates arguments, builds the HTTP request, and returns the HTTP response as the tool result.
 // Returns the list of tool names registered.
-func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions) []string {
+func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *openapi3.T, opts *ToolGenOptions) []string {
 	baseURLs := []string{}
 	if os.Getenv("OPENAPI_BASE_URL") != "" {
 		baseURLs = append(baseURLs, os.Getenv("OPENAPI_BASE_URL"))
@@ -387,7 +426,6 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 		if opts != nil && opts.PostProcessSchema != nil {
 			inputSchema = opts.PostProcessSchema(op.OperationID, inputSchema)
 		}
-		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
 
 		// Generate AI-friendly description
 		desc := generateAIFriendlyDescription(op, inputSchema)
@@ -397,7 +435,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			name = opts.NameFormat(name)
 		}
 
-		annotations := mcp.ToolAnnotation{}
+		annotations := mcp.ToolAnnotations{}
 		var titleParts []string
 		if opts != nil && opts.Version != "" {
 			titleParts = append(titleParts, "OpenAPI "+opts.Version)
@@ -409,9 +447,12 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			annotations.Title = strings.Join(titleParts, " | ")
 		}
 
-		tool := mcp.NewToolWithRawSchema(name, desc, inputSchemaJSON)
-		tool.Annotations = annotations
-		// toolSchemas[name] = inputSchemaJSON
+		tool := &mcp.Tool{
+			Name:        name,
+			Description: desc,
+			InputSchema: &inputSchema,
+		}
+		tool.Annotations = &annotations
 
 		if opts != nil && opts.DryRun {
 			// For dry run, collect summary info
@@ -430,11 +471,14 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			requestHandler = opts.RequestHandler
 		}
 
-		server.AddTool(tool, toolHandler(
+		j, _ := json.MarshalIndent(inputSchema, "", "  ")
+		fmt.Println(string(j))
+
+		mcp.AddTool(server, tool, toolHandler(
 			name,
 			op,
 			doc,
-			inputSchemaJSON,
+			inputSchema,
 			baseURLs,
 			opts != nil && opts.ConfirmDangerousActions,
 			requestHandler,
@@ -445,26 +489,26 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 
 	// Add a tool for externalDocs if present
 	if doc.ExternalDocs != nil && doc.ExternalDocs.URL != "" && (opts == nil || !opts.DryRun) {
-		desc := "Show the OpenAPI external documentation URL and description."
-		inputSchema := map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
+		tool := &mcp.Tool{
+			Name:        "externalDocs",
+			Description: "Show the OpenAPI external documentation URL and description.",
+			InputSchema: &jsonschema.Schema{Type: "object", Properties: map[string]*jsonschema.Schema{}},
 		}
-		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		tool := mcp.NewToolWithRawSchema("externalDocs", desc, inputSchemaJSON)
-		tool.Annotations = mcp.ToolAnnotation{}
+
 		if opts != nil && opts.Version != "" {
-			tool.Annotations.Title = "OpenAPI " + opts.Version
+			tool.Annotations = &mcp.ToolAnnotations{
+				Title: "OpenAPI " + opts.Version,
+			}
 		}
-		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+
+		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 			info := "External documentation URL: " + doc.ExternalDocs.URL
 			if doc.ExternalDocs.Description != "" {
 				info += "\nDescription: " + doc.ExternalDocs.Description
 			}
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: info,
 					},
 				},
@@ -475,20 +519,19 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 
 	// Add a tool for info if present
 	if doc.Info != nil && (opts == nil || !opts.DryRun) {
-		desc := "Show API metadata: title, version, description, and terms of service."
-		inputSchema := map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
+		tool := &mcp.Tool{
+			Name:        "info",
+			Description: "Show API metadata: title, version, description, and terms of service.",
+			InputSchema: &jsonschema.Schema{Type: "object", Properties: map[string]*jsonschema.Schema{}},
 		}
 
-		inputSchemaJSON, _ := json.MarshalIndent(inputSchema, "", "  ")
-		tool := mcp.NewToolWithRawSchema("info", desc, inputSchemaJSON)
-		tool.Annotations = mcp.ToolAnnotation{}
 		if opts != nil && opts.Version != "" {
-			tool.Annotations.Title = "OpenAPI " + opts.Version
+			tool.Annotations = &mcp.ToolAnnotations{
+				Title: "OpenAPI " + opts.Version,
+			}
 		}
 
-		server.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 			var sb strings.Builder
 			if doc.Info.Title != "" {
 				sb.WriteString("Title: " + doc.Info.Title + "\n")
@@ -504,8 +547,7 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			}
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: strings.TrimSpace(sb.String()),
 					},
 				},
@@ -542,18 +584,20 @@ func RegisterOpenAPITools(server *mcpserver.MCPServer, ops []OpenAPIOperation, d
 			MIMEType:    "application/json",
 		}
 
-		server.AddResource(timestampResource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		server.AddResource(&timestampResource, func(ctx context.Context, session *mcp.ServerSession, params *mcp.ReadResourceParams) (*mcp.ReadResourceResult, error) {
 			now := time.Now().Unix()
 			content := fmt.Sprintf(`{"unix_timestamp": %d, "iso8601": "%s", "timezone": "%s"}`,
 				now,
 				time.Now().Format(time.RFC3339),
 				time.Now().Format("MST"))
 
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{
-					URI:      timestampResource.URI,
-					MIMEType: "application/json",
-					Text:     content,
+			return &mcp.ReadResourceResult{
+				Contents: []*mcp.ResourceContents{
+					{
+						URI:      timestampResource.URI,
+						MIMEType: "application/json",
+						Text:     content,
+					},
 				},
 			}, nil
 		})

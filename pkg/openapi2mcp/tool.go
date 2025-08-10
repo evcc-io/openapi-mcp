@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/xeipuuv/gojsonschema"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func defaultRequestHandler(req *http.Request) (*http.Response, error) {
@@ -26,146 +26,25 @@ func toolHandler(
 	name string,
 	op OpenAPIOperation,
 	doc *openapi3.T,
-	inputSchemaJSON []byte,
+	inputSchema jsonschema.Schema,
 	baseURLs []string,
 	confirmDangerousActions bool,
 	requestHandler func(req *http.Request) (*http.Response, error),
-) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var schema *gojsonschema.Schema
-
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := req.GetArguments()
-		if args == nil {
+) func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+		var args map[string]any
+		if params.Arguments == nil {
 			args = map[string]any{}
+		} else {
+			var ok bool
+			args, ok = params.Arguments.(map[string]any)
+			if !ok {
+				args = map[string]any{}
+			}
 		}
 
 		// Build parameter name mapping for escaped parameter names
 		paramNameMapping := buildParameterNameMapping(op.Parameters)
-
-		// Validate arguments against inputSchema
-		if schema == nil {
-			var err error
-			schema, err = gojsonschema.NewSchema(gojsonschema.NewBytesLoader(inputSchemaJSON))
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		argsJSON, _ := json.Marshal(args)
-		argsLoader := gojsonschema.NewBytesLoader(argsJSON)
-		result, err := schema.Validate(argsLoader)
-		if err != nil {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
-						Text: "Validation error: " + err.Error(),
-					},
-				},
-				IsError: true,
-			}, nil
-		}
-
-		if !result.Valid() {
-			var missingFields []string
-			var suggestions []string
-			var errMsgs string
-
-			// Parse the input schema for property descriptions
-			var schemaObj map[string]any
-			_ = json.Unmarshal(inputSchemaJSON, &schemaObj)
-			properties, _ := schemaObj["properties"].(map[string]any)
-
-			for _, verr := range result.Errors() {
-				errMsg := ""
-
-				// Handle different validation error types with plain text messages
-				switch verr.Type() {
-				case "required":
-					if missingRaw, ok := verr.Details()["property"]; ok {
-						if missing, ok := missingRaw.(string); ok {
-							missingFields = append(missingFields, missing)
-							if prop, ok := properties[missing].(map[string]any); ok {
-								desc, _ := prop["description"].(string)
-								typeStr, _ := prop["type"].(string)
-								info := ""
-								if desc != "" {
-									info = desc
-								}
-								if typeStr != "" {
-									if info != "" {
-										info += ", "
-									}
-									info += "type: " + typeStr
-								}
-								if info != "" {
-									errMsg = "Missing required parameter: '" + missing + "' (" + info + "). Please provide this parameter."
-								} else {
-									errMsg = "Missing required parameter: '" + missing + "'"
-								}
-							} else {
-								errMsg = "Missing required parameter: '" + missing + "'"
-							}
-						}
-					}
-				case "invalid_type":
-					// Convert "Invalid type. Expected: string, given: integer" to plain text
-					errMsg = verr.String()
-				case "enum":
-					// Convert enum validation errors to plain text
-					errMsg = verr.String()
-				case "invalid_union", "one_of", "any_of":
-					// Convert union/oneOf/anyOf errors to plain text
-					errMsg = "Invalid value. " + verr.String()
-				default:
-					// For any other validation error types, ensure it's plain text
-					errMsg = verr.String()
-				}
-
-				if errMsg != "" {
-					errMsgs += errMsg + "\n"
-				}
-			}
-
-			// Suggest a retry with an example argument set
-			exampleArgs := map[string]any{}
-			for k, v := range properties {
-				if prop, ok := v.(map[string]any); ok {
-					typeStr, _ := prop["type"].(string)
-					switch typeStr {
-					case "string":
-						exampleArgs[k] = "example"
-					case "number":
-						exampleArgs[k] = 123.45
-					case "integer":
-						exampleArgs[k] = 123
-					case "boolean":
-						exampleArgs[k] = true
-					case "array":
-						exampleArgs[k] = []any{"item1", "item2"}
-					case "object":
-						exampleArgs[k] = map[string]any{"key": "value"}
-					default:
-						exampleArgs[k] = nil
-					}
-				} else {
-					exampleArgs[k] = nil
-				}
-			}
-
-			suggestionStr := "Try again with: call " + name + " "
-			exampleJSON, _ := json.Marshal(exampleArgs)
-			suggestionStr += string(exampleJSON)
-			suggestions = append(suggestions, suggestionStr)
-
-			// Create a simple text error message
-			errorText := strings.TrimSpace(errMsgs)
-			if len(suggestions) > 0 {
-				errorText += "\n\n" + strings.Join(suggestions, "\n")
-			}
-
-			return mcp.NewToolResultError(errorText), nil
-		}
 
 		// Build URL path with path parameters
 		path := op.Path
@@ -351,15 +230,16 @@ func toolHandler(
 
 			suggestion := "Check the input parameters, authentication, and consult the tool schema. See the OpenAPI documentation for more details."
 
+			// Pass schema directly to error handling functions
 			switch {
 			case resp.StatusCode == 401 || resp.StatusCode == 403:
-				suggestion = generateAI401403ErrorResponse(op, inputSchemaJSON, args, string(respBody), resp.StatusCode)
+				suggestion = generateAI401403ErrorResponse(op, inputSchema, args, string(respBody), resp.StatusCode)
 			case resp.StatusCode == 404:
-				suggestion = generateAI404ErrorResponse(op, inputSchemaJSON, args, string(respBody))
+				suggestion = generateAI404ErrorResponse(op, inputSchema, args, string(respBody))
 			case resp.StatusCode == 400:
-				suggestion = generateAI400ErrorResponse(op, inputSchemaJSON, args, string(respBody))
+				suggestion = generateAI400ErrorResponse(op, inputSchema, args, string(respBody))
 			case resp.StatusCode >= 500:
-				suggestion = generateAI5xxErrorResponse(op, inputSchemaJSON, args, string(respBody), resp.StatusCode)
+				suggestion = generateAI5xxErrorResponse(op, inputSchema, args, string(respBody), resp.StatusCode)
 			}
 
 			// For binary error responses, include base64 and mime type
@@ -393,8 +273,7 @@ func toolHandler(
 
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "json",
+						&mcp.TextContent{
 							Text: string(errorJSON),
 						},
 					},
@@ -412,7 +291,14 @@ func toolHandler(
 			}
 			errorText += fmt.Sprintf("\nOperation: %s (%s)", op.OperationID, opSummary)
 
-			return mcp.NewToolResultError(errorText), nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: errorText,
+					},
+				},
+				IsError: true,
+			}, nil
 		}
 
 		// Handle binary/file responses for success
@@ -439,8 +325,7 @@ func toolHandler(
 			resultJSON, _ := json.MarshalIndent(resultObj, "", "  ")
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "json",
+					&mcp.TextContent{
 						Text: string(resultJSON),
 					},
 				},
@@ -452,8 +337,7 @@ func toolHandler(
 		if args["stream"] == true {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
+					&mcp.TextContent{
 						Text: respText,
 					},
 				},
@@ -465,8 +349,7 @@ func toolHandler(
 				confirmText := fmt.Sprintf("⚠️  CONFIRMATION REQUIRED\n\nAction: %s\nThis action is irreversible. Proceed?\n\nTo confirm, retry the call with {\"__confirmed\": true} added to your arguments.", name)
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{
-						mcp.TextContent{
-							Type: "text",
+						&mcp.TextContent{
 							Text: confirmText,
 						},
 					},
@@ -476,8 +359,7 @@ func toolHandler(
 
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
+				&mcp.TextContent{
 					Text: respText,
 				},
 			},

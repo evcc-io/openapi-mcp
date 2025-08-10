@@ -2,11 +2,13 @@
 package openapi2mcp
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/modelcontextprotocol/go-sdk/jsonschema"
 )
 
 // escapeParameterName converts parameter names with brackets to MCP-compatible names.
@@ -57,99 +59,104 @@ func buildParameterNameMapping(params openapi3.Parameters) map[string]string {
 
 // extractProperty recursively extracts a property schema from an OpenAPI SchemaRef.
 // Handles allOf, oneOf, anyOf, discriminator, default, example, and basic OpenAPI 3.1 features.
-func extractProperty(s *openapi3.SchemaRef) map[string]any {
+func extractProperty(s *openapi3.SchemaRef) *jsonschema.Schema {
 	if s == nil || s.Value == nil {
 		return nil
 	}
 	val := s.Value
-	prop := map[string]any{}
+	prop := &jsonschema.Schema{}
+
 	// Handle allOf (merge all subschemas)
 	if len(val.AllOf) > 0 {
-		merged := map[string]any{}
-		for _, sub := range val.AllOf {
-			subProp := extractProperty(sub)
-			for k, v := range subProp {
-				merged[k] = v
-			}
+		allOfSchemas := make([]*jsonschema.Schema, len(val.AllOf))
+		for i, sub := range val.AllOf {
+			allOfSchemas[i] = extractProperty(sub)
 		}
-		for k, v := range merged {
-			prop[k] = v
-		}
+		prop.AllOf = allOfSchemas
 	}
-	// Handle oneOf/anyOf (just include as-is for now)
+
+	// Handle oneOf/anyOf
 	if len(val.OneOf) > 0 {
 		fmt.Fprintf(os.Stderr, "[WARN] oneOf used in schema at %p. Only basic support is provided.\n", val)
-		oneOf := []any{}
-		for _, sub := range val.OneOf {
-			oneOf = append(oneOf, extractProperty(sub))
+		oneOfSchemas := make([]*jsonschema.Schema, len(val.OneOf))
+		for i, sub := range val.OneOf {
+			oneOfSchemas[i] = extractProperty(sub)
 		}
-		prop["oneOf"] = oneOf
+		prop.OneOf = oneOfSchemas
 	}
 	if len(val.AnyOf) > 0 {
 		fmt.Fprintf(os.Stderr, "[WARN] anyOf used in schema at %p. Only basic support is provided.\n", val)
-		anyOf := []any{}
-		for _, sub := range val.AnyOf {
-			anyOf = append(anyOf, extractProperty(sub))
+		anyOfSchemas := make([]*jsonschema.Schema, len(val.AnyOf))
+		for i, sub := range val.AnyOf {
+			anyOfSchemas[i] = extractProperty(sub)
 		}
-		prop["anyOf"] = anyOf
+		prop.AnyOf = anyOfSchemas
 	}
+
 	// Handle discriminator (OpenAPI 3.0/3.1)
 	if val.Discriminator != nil {
 		fmt.Fprintf(os.Stderr, "[WARN] discriminator used in schema at %p. Only basic support is provided.\n", val)
-		prop["discriminator"] = val.Discriminator
+		// Store discriminator in Extra map since it's not a standard JSON Schema field
+		if prop.Extra == nil {
+			prop.Extra = make(map[string]any)
+		}
+		prop.Extra["discriminator"] = val.Discriminator
 	}
+
 	// Type, format, description, enum, default, example
 	if val.Type != nil && len(*val.Type) > 0 {
 		// Use the first type if multiple types are specified
-		prop["type"] = (*val.Type)[0]
+		prop.Type = (*val.Type)[0]
 	}
 	if val.Format != "" {
-		prop["format"] = val.Format
+		prop.Format = val.Format
 	}
 	if val.Description != "" {
-		prop["description"] = val.Description
+		prop.Description = val.Description
 	}
 	if len(val.Enum) > 0 {
-		prop["enum"] = val.Enum
+		prop.Enum = val.Enum
 	}
 	if val.Default != nil {
-		prop["default"] = val.Default
+		defaultBytes, _ := json.Marshal(val.Default)
+		prop.Default = json.RawMessage(defaultBytes)
 	}
 	if val.Example != nil {
-		prop["example"] = val.Example
+		prop.Examples = []any{val.Example}
 	}
+
 	// Object properties
 	if val.Type != nil && val.Type.Is("object") && val.Properties != nil {
-		objProps := map[string]any{}
+		prop.Properties = make(map[string]*jsonschema.Schema)
 		for name, sub := range val.Properties {
-			objProps[name] = extractProperty(sub)
+			prop.Properties[name] = extractProperty(sub)
 		}
-		prop["properties"] = objProps
 		if len(val.Required) > 0 {
-			prop["required"] = val.Required
+			prop.Required = val.Required
 		}
 	}
+
 	// Array items
 	if val.Type != nil && val.Type.Is("array") && val.Items != nil {
-		prop["items"] = extractProperty(val.Items)
+		prop.Items = extractProperty(val.Items)
 	}
+
 	return prop
 }
 
 // BuildInputSchema converts OpenAPI parameters and request body schema to a single JSON Schema object for MCP tool input validation.
-// Returns a JSON Schema as a map[string]any.
+// Returns a JSON Schema as a jsonschema.Schema.
 // Example usage for BuildInputSchema:
 //
 //	params := ... // openapi3.Parameters from an operation
 //	reqBody := ... // *openapi3.RequestBodyRef from an operation
 //	schema := openapi2mcp.BuildInputSchema(params, reqBody)
-//	// schema is a map[string]any representing the JSON schema for tool input
-func BuildInputSchema(params openapi3.Parameters, requestBody *openapi3.RequestBodyRef) map[string]any {
-	schema := map[string]any{
-		"type":       "object",
-		"properties": map[string]any{},
+//	// schema is a jsonschema.Schema representing the JSON schema for tool input
+func BuildInputSchema(params openapi3.Parameters, requestBody *openapi3.RequestBodyRef) jsonschema.Schema {
+	schema := jsonschema.Schema{
+		Type:       "object",
+		Properties: make(map[string]*jsonschema.Schema),
 	}
-	properties := schema["properties"].(map[string]any)
 	var required []string
 
 	// Parameters (query, path, header, cookie)
@@ -163,14 +170,17 @@ func BuildInputSchema(params openapi3.Parameters, requestBody *openapi3.RequestB
 				fmt.Fprintf(os.Stderr, "[WARN] Parameter '%s' uses 'string' with 'binary' format. Non-JSON body types are not fully supported.\n", p.Name)
 			}
 			prop := extractProperty(p.Schema)
-			if p.Description != "" {
-				prop["description"] = p.Description
-			}
-			// Use escaped parameter name for MCP schema compatibility
-			escapedName := escapeParameterName(p.Name)
-			properties[escapedName] = prop
-			if p.Required {
-				required = append(required, escapedName)
+			if prop != nil {
+				// Override description if parameter has its own description
+				if p.Description != "" {
+					prop.Description = p.Description
+				}
+				// Use escaped parameter name for MCP schema compatibility
+				escapedName := escapeParameterName(p.Name)
+				schema.Properties[escapedName] = prop
+				if p.Required {
+					required = append(required, escapedName)
+				}
 			}
 		}
 		// Warn about unsupported parameter locations
@@ -198,16 +208,27 @@ func BuildInputSchema(params openapi3.Parameters, requestBody *openapi3.RequestB
 		}
 		if mt != nil && mt.Schema != nil && mt.Schema.Value != nil {
 			bodyProp := extractProperty(mt.Schema)
-			bodyProp["description"] = "The JSON request body."
-			properties["requestBody"] = bodyProp
-			if requestBody.Value.Required {
-				required = append(required, "requestBody")
+			if bodyProp != nil {
+				bodyProp.Description = "The JSON request body."
+				schema.Properties["requestBody"] = bodyProp
+				if requestBody.Value.Required {
+					required = append(required, "requestBody")
+				}
 			}
 		}
 	}
 
 	if len(required) > 0 {
-		schema["required"] = required
+		schema.Required = required
 	}
+
 	return schema
+}
+
+// SchemaToMap converts a jsonschema.Schema to map[string]any for backward compatibility
+func SchemaToMap(schema jsonschema.Schema) map[string]any {
+	schemaBytes, _ := json.Marshal(schema)
+	var result map[string]any
+	json.Unmarshal(schemaBytes, &result)
+	return result
 }
