@@ -56,7 +56,7 @@ func TestGenerateAIFriendlyDescription_WithJsonSchema(t *testing.T) {
 	}
 
 	// Generate the description
-	description := generateAIFriendlyDescription(op, schema, "")
+	description := generateAIFriendlyDescription(op, schema)
 
 	// Verify that the description contains expected content
 	if !strings.Contains(description, "This is a test operation") {
