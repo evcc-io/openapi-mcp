@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // OpenAPIOperation describes a single OpenAPI operation to be mapped to an MCP tool.

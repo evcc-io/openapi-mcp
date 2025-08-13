@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // generateAI400ErrorResponse creates a comprehensive, AI-optimized error response for 400 HTTP errors

@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -30,17 +30,11 @@ func toolHandler(
 	baseURLs []string,
 	confirmDangerousActions bool,
 	requestHandler func(req *http.Request) (*http.Response, error),
-) func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
-		var args map[string]any
-		if params.Arguments == nil {
+) func(ctx context.Context, req *mcp.ServerRequest[*mcp.CallToolParams]) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req *mcp.ServerRequest[*mcp.CallToolParams]) (*mcp.CallToolResult, error) {
+		args, ok := req.Params.Arguments.(map[string]any)
+		if args == nil || !ok {
 			args = map[string]any{}
-		} else {
-			var ok bool
-			args, ok = params.Arguments.(map[string]any)
-			if !ok {
-				args = map[string]any{}
-			}
 		}
 
 		// Build parameter name mapping for escaped parameter names

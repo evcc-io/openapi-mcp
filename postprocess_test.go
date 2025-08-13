@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 func TestPostProcessSchema_Integration(t *testing.T) {
@@ -29,7 +29,7 @@ func TestPostProcessSchema_Integration(t *testing.T) {
 
 	// Build the initial schema
 	originalSchema := BuildInputSchema(params, nil)
-	
+
 	// Verify original schema doesn't have the custom description
 	if originalSchema.Description != "" {
 		t.Errorf("Original schema should not have description, got: %s", originalSchema.Description)
@@ -48,11 +48,11 @@ func TestPostProcessSchema_Integration(t *testing.T) {
 	if processedSchema.Type != "object" {
 		t.Errorf("Expected type 'object', got %q", processedSchema.Type)
 	}
-	
+
 	if processedSchema.Properties == nil {
 		t.Error("Properties should be preserved")
 	}
-	
+
 	if _, ok := processedSchema.Properties["testParam"]; !ok {
 		t.Error("testParam property should be preserved")
 	}
@@ -64,8 +64,7 @@ func TestPostProcessSchema_Integration(t *testing.T) {
 
 func TestPostProcessSchema_TypesIntegrity(t *testing.T) {
 	// Test that the function signature change maintains type safety
-	var postProcessor func(string, jsonschema.Schema) jsonschema.Schema
-	postProcessor = func(toolName string, schema jsonschema.Schema) jsonschema.Schema {
+	postProcessor := func(toolName string, schema jsonschema.Schema) jsonschema.Schema {
 		// This demonstrates the function signature is correct
 		return schema
 	}
@@ -83,7 +82,7 @@ func TestPostProcessSchema_TypesIntegrity(t *testing.T) {
 	testSchema := jsonschema.Schema{
 		Type: "object",
 	}
-	
+
 	result := opts.PostProcessSchema("test", testSchema)
 	if result.Type != "object" {
 		t.Error("Function should return the schema")

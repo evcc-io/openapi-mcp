@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 func TestGenerateAIFriendlyDescription_WithJsonSchema(t *testing.T) {
