@@ -30,8 +30,8 @@ func toolHandler(
 	baseURLs []string,
 	confirmDangerousActions bool,
 	requestHandler func(req *http.Request) (*http.Response, error),
-) func(ctx context.Context, req *mcp.ServerRequest[*mcp.CallToolParams]) (*mcp.CallToolResult, error) {
-	return func(ctx context.Context, req *mcp.ServerRequest[*mcp.CallToolParams]) (*mcp.CallToolResult, error) {
+) func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
 		args, ok := req.Params.Arguments.(map[string]any)
 		if args == nil || !ok {
 			args = map[string]any{}
@@ -84,7 +84,7 @@ func toolHandler(
 		baseURL := baseURLs[rand.Intn(len(baseURLs))]
 		fullURL, err := url.JoinPath(baseURL, path)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(query) > 0 {
 			fullURL += "?" + query.Encode()
@@ -116,7 +116,7 @@ func toolHandler(
 		method := strings.ToUpper(op.Method)
 		httpReq, err := http.NewRequestWithContext(ctx, method, fullURL, bytes.NewReader(body))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(body) > 0 && requestContentType != "" {
 			httpReq.Header.Set("Content-Type", requestContentType)
@@ -199,7 +199,7 @@ func toolHandler(
 
 		resp, err := requestHandler(httpReq)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		defer resp.Body.Close()
 		respBody, _ := io.ReadAll(resp.Body)
@@ -272,7 +272,7 @@ func toolHandler(
 						},
 					},
 					IsError: true,
-				}, nil
+				}, nil, nil
 			}
 
 			// Create a simple text error message
@@ -292,7 +292,7 @@ func toolHandler(
 					},
 				},
 				IsError: true,
-			}, nil
+			}, nil, nil
 		}
 
 		// Handle binary/file responses for success
@@ -323,7 +323,7 @@ func toolHandler(
 						Text: string(resultJSON),
 					},
 				},
-			}, nil
+			}, nil, nil
 		}
 
 		// Always format the response as: HTTP <METHOD> <URL>\nStatus: <status>\nResponse:\n<respBody>
@@ -335,7 +335,7 @@ func toolHandler(
 						Text: respText,
 					},
 				},
-			}, nil
+			}, nil, nil
 		}
 
 		if confirmDangerousActions && (method == "PUT" || method == "POST" || method == "DELETE") {
@@ -347,7 +347,7 @@ func toolHandler(
 							Text: confirmText,
 						},
 					},
-				}, nil
+				}, nil, nil
 			}
 		}
 
@@ -357,7 +357,7 @@ func toolHandler(
 					Text: respText,
 				},
 			},
-		}, nil
+		}, nil, nil
 	}
 }
 

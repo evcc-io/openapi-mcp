@@ -449,7 +449,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			}
 		}
 
-		mcp.AddTool(server, tool, func(ctx context.Context, req *mcp.ServerRequest[*mcp.CallToolParams]) (*mcp.CallToolResult, error) {
+		mcp.AddTool(server, tool, func(_ context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
 			info := "External documentation URL: " + doc.ExternalDocs.URL
 			if doc.ExternalDocs.Description != "" {
 				info += "\nDescription: " + doc.ExternalDocs.Description
@@ -460,7 +460,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 						Text: info,
 					},
 				},
-			}, nil
+			}, nil, nil
 		})
 		toolNames = append(toolNames, "externalDocs")
 	}
@@ -479,7 +479,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			}
 		}
 
-		mcp.AddTool(server, tool, func(ctx context.Context, req *mcp.ServerRequest[*mcp.CallToolParams]) (*mcp.CallToolResult, error) {
+		mcp.AddTool(server, tool, func(_ context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
 			var sb strings.Builder
 			if doc.Info.Title != "" {
 				sb.WriteString("Title: " + doc.Info.Title + "\n")
@@ -499,7 +499,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 						Text: strings.TrimSpace(sb.String()),
 					},
 				},
-			}, nil
+			}, nil, nil
 		})
 		toolNames = append(toolNames, "info")
 	}
