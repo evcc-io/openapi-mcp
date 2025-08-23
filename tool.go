@@ -30,13 +30,8 @@ func toolHandler(
 	baseURLs []string,
 	confirmDangerousActions bool,
 	requestHandler func(req *http.Request) (*http.Response, error),
-) func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-		args, ok := req.Params.Arguments.(map[string]any)
-		if args == nil || !ok {
-			args = map[string]any{}
-		}
-
+) func(ctx context.Context, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
 		// Build parameter name mapping for escaped parameter names
 		paramNameMapping := buildParameterNameMapping(op.Parameters)
 
