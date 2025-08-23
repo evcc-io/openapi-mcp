@@ -440,7 +440,6 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		tool := &mcp.Tool{
 			Name:        "externalDocs",
 			Description: "Show the OpenAPI external documentation URL and description.",
-			InputSchema: &jsonschema.Schema{Type: "object", Properties: map[string]*jsonschema.Schema{}},
 		}
 
 		if opts != nil && opts.Version != "" {
@@ -470,7 +469,6 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		tool := &mcp.Tool{
 			Name:        "info",
 			Description: "Show API metadata: title, version, description, and terms of service.",
-			InputSchema: &jsonschema.Schema{Type: "object", Properties: map[string]*jsonschema.Schema{}},
 		}
 
 		if opts != nil && opts.Version != "" {

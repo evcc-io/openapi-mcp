@@ -7,7 +7,7 @@ toolchain go1.24.6
 require (
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/google/jsonschema-go v0.2.0
-	github.com/modelcontextprotocol/go-sdk v0.2.1-0.20250822180037-9754a2aa8620
+	github.com/modelcontextprotocol/go-sdk v0.3.0
 	go.yaml.in/yaml/v3 v3.0.4
 )
 
