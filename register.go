@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -187,58 +187,6 @@ func generateAIFriendlyDescription(op OpenAPIOperation, inputSchema jsonschema.S
 	}
 
 	return desc.String()
-}
-
-// generateExampleValue creates appropriate example values based on the parameter schema
-func generateExampleValue(prop map[string]any) any {
-	typeStr, _ := prop["type"].(string)
-
-	// Check for enum values first
-	if enum, ok := prop["enum"].([]any); ok && len(enum) > 0 {
-		return enum[0]
-	}
-
-	// Check for example values in schema
-	if example, ok := prop["example"]; ok {
-		return example
-	}
-
-	// Generate based on type
-	switch typeStr {
-	case "string":
-		if format, ok := prop["format"].(string); ok {
-			switch format {
-			case "email":
-				return "user@example.com"
-			case "uri", "url":
-				return "https://example.com"
-			case "date":
-				return "2024-01-01"
-			case "date-time":
-				return "2024-01-01T00:00:00Z"
-			case "uuid":
-				return "123e4567-e89b-12d3-a456-426614174000"
-			default:
-				return "example_string"
-			}
-		}
-		return "example_string"
-	case "number":
-		return 123.45
-	case "integer":
-		return 123
-	case "boolean":
-		return true
-	case "array":
-		if items, ok := prop["items"].(map[string]any); ok {
-			return []any{generateExampleValue(items)}
-		}
-		return []any{"item1", "item2"}
-	case "object":
-		return map[string]any{"key": "value"}
-	default:
-		return nil
-	}
 }
 
 // generateExampleValueFromSchema creates appropriate example values based on the jsonschema.Schema
@@ -492,7 +440,6 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		tool := &mcp.Tool{
 			Name:        "externalDocs",
 			Description: "Show the OpenAPI external documentation URL and description.",
-			InputSchema: &jsonschema.Schema{Type: "object", Properties: map[string]*jsonschema.Schema{}},
 		}
 
 		if opts != nil && opts.Version != "" {
@@ -501,7 +448,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			}
 		}
 
-		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+		mcp.AddTool(server, tool, func(_ context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
 			info := "External documentation URL: " + doc.ExternalDocs.URL
 			if doc.ExternalDocs.Description != "" {
 				info += "\nDescription: " + doc.ExternalDocs.Description
@@ -512,7 +459,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 						Text: info,
 					},
 				},
-			}, nil
+			}, nil, nil
 		})
 		toolNames = append(toolNames, "externalDocs")
 	}
@@ -522,7 +469,6 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		tool := &mcp.Tool{
 			Name:        "info",
 			Description: "Show API metadata: title, version, description, and terms of service.",
-			InputSchema: &jsonschema.Schema{Type: "object", Properties: map[string]*jsonschema.Schema{}},
 		}
 
 		if opts != nil && opts.Version != "" {
@@ -531,7 +477,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			}
 		}
 
-		mcp.AddTool(server, tool, func(ctx context.Context, session *mcp.ServerSession, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+		mcp.AddTool(server, tool, func(_ context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
 			var sb strings.Builder
 			if doc.Info.Title != "" {
 				sb.WriteString("Title: " + doc.Info.Title + "\n")
@@ -551,7 +497,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 						Text: strings.TrimSpace(sb.String()),
 					},
 				},
-			}, nil
+			}, nil, nil
 		})
 		toolNames = append(toolNames, "info")
 	}
@@ -584,7 +530,7 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 			MIMEType:    "application/json",
 		}
 
-		server.AddResource(&timestampResource, func(ctx context.Context, session *mcp.ServerSession, params *mcp.ReadResourceParams) (*mcp.ReadResourceResult, error) {
+		server.AddResource(&timestampResource, func(ctx context.Context, req *mcp.ServerRequest[*mcp.ReadResourceParams]) (*mcp.ReadResourceResult, error) {
 			now := time.Now().Unix()
 			content := fmt.Sprintf(`{"unix_timestamp": %d, "iso8601": "%s", "timezone": "%s"}`,
 				now,

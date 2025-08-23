@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/modelcontextprotocol/go-sdk/jsonschema"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // escapeParameterName converts parameter names with brackets to MCP-compatible names.
@@ -29,15 +29,6 @@ func escapeParameterName(name string) string {
 	}
 
 	return escaped
-}
-
-// unescapeParameterName converts escaped parameter names back to their original form.
-// This maintains a mapping from escaped names to original names for parameter lookup.
-func unescapeParameterName(escaped string, originalNames map[string]string) string {
-	if original, exists := originalNames[escaped]; exists {
-		return original
-	}
-	return escaped // Return as-is if not found in mapping
 }
 
 // buildParameterNameMapping creates a mapping from escaped parameter names to original names.
