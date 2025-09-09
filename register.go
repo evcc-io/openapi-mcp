@@ -359,10 +359,14 @@ func RegisterOpenAPITools(server *mcp.Server, ops []OpenAPIOperation, doc *opena
 		if opts == nil || len(opts.TagFilter) == 0 {
 			return true
 		}
-		for _, tag := range op.Tags {
-			return slices.Contains(opts.TagFilter, tag)
+		found := false
+		for _, tag := range opts.TagFilter {
+			if slices.Contains(op.Tags, tag) {
+				found = true
+				break
+			}
 		}
-		return false
+		return found
 	}
 
 	for _, op := range ops {

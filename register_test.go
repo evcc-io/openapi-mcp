@@ -85,6 +85,61 @@ func TestRegisterOpenAPITools_TagFilter(t *testing.T) {
 	}
 }
 
+func TestRegisterOpenAPITools_MultipleTagFilter(t *testing.T) {
+	doc := minimalOpenAPIDoc()
+
+	doc.Paths.Set("/foo", &openapi3.PathItem{
+		Get: &openapi3.Operation{
+			OperationID: "multitag",
+			Summary:     "Get Foo",
+			Parameters:  openapi3.Parameters{},
+			Tags:        []string{"tag1", "tag2"},
+		},
+		Head: &openapi3.Operation{
+			OperationID: "multitagStartingWithNotMatched",
+			Summary:     "Head Foo",
+			Parameters:  openapi3.Parameters{},
+			Tags:        []string{"foo", "tag1", "tag2"},
+		},
+		Post: &openapi3.Operation{
+			OperationID: "tag1",
+			Summary:     "Post Foo",
+			Parameters:  openapi3.Parameters{},
+			Tags:        []string{"tag1"},
+		},
+		Put: &openapi3.Operation{
+			OperationID: "tag2",
+			Summary:     "Put Foo",
+			Parameters:  openapi3.Parameters{},
+			Tags:        []string{"tag2"},
+		},
+		Delete: &openapi3.Operation{
+			OperationID: "tag3",
+			Summary:     "Delete Foo",
+			Parameters:  openapi3.Parameters{},
+			Tags:        []string{"tag3"},
+		},
+		Patch: &openapi3.Operation{
+			OperationID: "notags",
+			Summary:     "Patch Foo",
+			Parameters:  openapi3.Parameters{},
+			Tags:        []string{},
+		},
+	})
+
+	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
+	srv := mcp.NewServer(impl, nil)
+	ops := ExtractOpenAPIOperations(doc)
+	opts := &ToolGenOptions{
+		TagFilter: []string{"tag1", "tag2"}, // should filter ops with tag1 OR tag2
+	}
+	names := RegisterOpenAPITools(srv, ops, doc, opts)
+	expected := []string{"multitag", "multitagStartingWithNotMatched", "tag1", "tag2", "info"}
+	if !toolSetEqual(names, expected) {
+		t.Fatalf("unexpected tools, want %v, got: %v", expected, names)
+	}
+}
+
 func TestSelfTestOpenAPIMCP_Pass(t *testing.T) {
 	doc := minimalOpenAPIDoc()
 	impl := &mcp.Implementation{Name: "test", Version: "1.0.0"}
