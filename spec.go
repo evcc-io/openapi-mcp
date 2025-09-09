@@ -187,6 +187,7 @@ func ExtractOpenAPIOperations(doc *openapi3.T) []OpenAPIOperation {
 				RequestBody: op.RequestBody,
 				Tags:        tags,
 				Security:    security,
+				Deprecated:  op.Deprecated,
 			})
 		}
 	}
