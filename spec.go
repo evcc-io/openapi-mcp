@@ -2,6 +2,7 @@
 package openapi2mcp
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -102,7 +103,7 @@ func generateAIOpenAPILoadError(operation, path string, originalErr error) error
 	response.WriteString("          description: OK\n")
 	response.WriteString("```\n")
 
-	return fmt.Errorf(response.String())
+	return errors.New(response.String())
 }
 
 // LoadOpenAPISpec loads and parses an OpenAPI YAML or JSON file from the given path.

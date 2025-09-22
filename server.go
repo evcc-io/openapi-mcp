@@ -64,7 +64,7 @@ func ServeHTTP(server *mcp.Server, addr string, basePath string) error {
 		basePath = "/mcp"
 	}
 
-	handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return server })
+	handler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return server }, nil)
 	return http.ListenAndServe(addr, handler)
 }
 
@@ -134,7 +134,7 @@ func normalizeAddrToHost(addr string) string {
 //	handler := openapi2mcp.HandlerForBasePath(srv, "/petstore")
 //	mux.Handle("/petstore/", handler)
 func HandlerForBasePath(server *mcp.Server, basePath string) http.Handler {
-	return mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return server })
+	return mcp.NewSSEHandler(func(r *http.Request) *mcp.Server { return server }, nil)
 }
 
 // ServeStreamableHTTP starts the MCP server using HTTP StreamableHTTP (wraps mcpserver.NewStreamableHTTPServer and Start).

@@ -4,8 +4,8 @@ go 1.24.0
 
 require (
 	github.com/getkin/kin-openapi v0.133.0
-	github.com/google/jsonschema-go v0.2.1-0.20250828145618-7d3a7746ff83
-	github.com/modelcontextprotocol/go-sdk v0.4.0
+	github.com/google/jsonschema-go v0.2.3
+	github.com/modelcontextprotocol/go-sdk v0.6.0
 	go.yaml.in/yaml/v3 v3.0.4
 )
 
