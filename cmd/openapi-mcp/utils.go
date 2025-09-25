@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 
 	openapi2mcp "github.com/evcc-io/openapi-mcp"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -38,12 +39,10 @@ func compareWithDiffFile(opts *openapi2mcp.ToolGenOptions, doc *openapi3.T, ops 
 	for _, op := range ops {
 		if len(opts.TagFilter) > 0 {
 			found := false
-			for _, tag := range op.Tags {
-				for _, want := range opts.TagFilter {
-					if tag == want {
-						found = true
-						break
-					}
+			for _, tag := range opts.TagFilter {
+				if slices.Contains(op.Tags, tag) {
+					found = true
+					break
 				}
 			}
 			if !found {
