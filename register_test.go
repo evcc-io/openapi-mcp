@@ -625,3 +625,151 @@ func TestGetParameterValue(t *testing.T) {
 		t.Errorf("Expected to not find non-existent parameter, but found: %v", val)
 	}
 }
+
+// Examples from https://swagger.io/docs/specification/v3_0/serialization/
+func TestSerializeParameter(t *testing.T) {
+	testCases := []struct {
+		name      string
+		paramName string
+		val       any
+		schema    *openapi3.Schema
+		cases     map[bool]map[string]map[string]string
+	}{
+		{
+			name:      "primitive id=5",
+			paramName: "id",
+			val:       float64(5),
+			schema:    &openapi3.Schema{Type: typesPtr("integer")},
+			cases: map[bool]map[string]map[string]string{
+				false: {
+					"simple": {"path": "5", "header": "5"},
+					"label":  {"path": ".5"},
+					"matrix": {"path": ";id=5"},
+					"form":   {"query": "id=5", "cookie": "id=5"},
+				},
+				true: {
+					"simple": {"path": "5", "header": "5"},
+					"label":  {"path": ".5"},
+					"matrix": {"path": ";id=5"},
+					"form":   {"query": "id=5", "cookie": "id=5"},
+				},
+			},
+		},
+		{
+			name:      "array id=[3,4,5]",
+			paramName: "id",
+			val:       []any{float64(3), float64(4), float64(5)},
+			schema: &openapi3.Schema{
+				Type:  typesPtr("array"),
+				Items: &openapi3.SchemaRef{Value: &openapi3.Schema{Type: typesPtr("integer")}},
+			},
+			cases: map[bool]map[string]map[string]string{
+				false: {
+					"simple":         {"path": "3,4,5", "header": "3,4,5"},
+					"label":          {"path": ".3,4,5"},
+					"matrix":         {"path": ";id=3,4,5"},
+					"form":           {"query": "id=3%2C4%2C5", "cookie": "id=3,4,5"},
+					"spaceDelimited": {"query": "id=3+4+5"},
+					"pipeDelimited":  {"query": "id=3%7C4%7C5"},
+				},
+				true: {
+					"simple":         {"path": "3,4,5", "header": "3,4,5"},
+					"label":          {"path": ".3.4.5"},
+					"matrix":         {"path": ";id=3;id=4;id=5"},
+					"form":           {"query": "id=3&id=4&id=5"},
+					"spaceDelimited": {"query": "id=3&id=4&id=5"},
+					"pipeDelimited":  {"query": "id=3&id=4&id=5"},
+				},
+			},
+		},
+		{
+			name:      "array id=[a/b,c d]",
+			paramName: "id",
+			val:       []any{"a/b", "c d"},
+			schema: &openapi3.Schema{
+				Type:  typesPtr("array"),
+				Items: &openapi3.SchemaRef{Value: &openapi3.Schema{Type: typesPtr("string")}},
+			},
+			cases: map[bool]map[string]map[string]string{
+				false: {
+					"simple": {"path": "a%2Fb,c%20d", "header": "a/b,c d"},
+					"label":  {"path": ".a%2Fb,c%20d"},
+					"matrix": {"path": ";id=a%2Fb,c%20d"},
+				},
+				true: {
+					"simple": {"path": "a%2Fb,c%20d", "header": "a/b,c d"},
+					"label":  {"path": ".a%2Fb.c%20d"},
+					"matrix": {"path": ";id=a%2Fb;id=c%20d"},
+				},
+			},
+		},
+		{
+			name:      "object id={role:admin,firstName:Alex}",
+			paramName: "id",
+			val:       map[string]any{"role": "admin", "firstName": "Alex"},
+			schema: &openapi3.Schema{
+				Type: typesPtr("object"),
+				Properties: openapi3.Schemas{
+					"role":      {Value: &openapi3.Schema{Type: typesPtr("string")}},
+					"firstName": {Value: &openapi3.Schema{Type: typesPtr("string")}},
+				},
+			},
+			cases: map[bool]map[string]map[string]string{
+				false: {
+					"simple": {"path": "firstName,Alex,role,admin", "header": "firstName,Alex,role,admin"},
+					"label":  {"path": ".firstName,Alex,role,admin"},
+					"matrix": {"path": ";id=firstName,Alex,role,admin"},
+					"form":   {"query": "id=firstName%2CAlex%2Crole%2Cadmin", "cookie": "id=firstName,Alex,role,admin"},
+				},
+				true: {
+					"simple":     {"path": "firstName=Alex,role=admin", "header": "firstName=Alex,role=admin"},
+					"label":      {"path": ".firstName=Alex.role=admin"},
+					"matrix":     {"path": ";firstName=Alex;role=admin"},
+					"form":       {"query": "firstName=Alex&role=admin", "cookie": "firstName=Alex; role=admin"},
+					"deepObject": {"query": "id%5BfirstName%5D=Alex&id%5Brole%5D=admin"},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		for explode, styleMap := range tc.cases {
+			for style, paramTypeMap := range styleMap {
+				testName := tc.name + " " + style
+				if explode {
+					testName += " explode=true"
+				} else {
+					testName += " explode=false"
+				}
+
+				t.Run(testName, func(t *testing.T) {
+					for paramType, want := range paramTypeMap {
+						switch paramType {
+						case "path":
+							got := serializePathParameter(tc.paramName, tc.val, tc.schema, style, explode)
+							if got != want {
+								t.Errorf("[path] got %v, want %v", got, want)
+							}
+						case "header":
+							got := serializeHeaderParameter(tc.val, tc.schema, explode)
+							if got != want {
+								t.Errorf("[header] got %v, want %v", got, want)
+							}
+						case "cookie":
+							got := serializeCookieParameter(tc.paramName, tc.val, tc.schema, explode)
+							if got != want {
+								t.Errorf("[cookie] got %v, want %v", got, want)
+							}
+						case "query":
+							gotValues := serializeQueryParameter(tc.paramName, tc.val, tc.schema, style, explode)
+							got := gotValues.Encode()
+							if got != want {
+								t.Errorf("[query] got %v, want %v", got, want)
+							}
+						}
+					}
+				})
+			}
+		}
+	}
+}
