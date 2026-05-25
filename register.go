@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -30,8 +31,9 @@ func getParameterValue(args map[string]any, paramName string, paramNameMapping m
 }
 
 // formatParameterValue converts a parameter value to a string, formatting integers without decimals
-func formatParameterValue(val any, isInteger bool) string {
-	if isInteger {
+// when the associated OpenAPI schema declares an integer type.
+func formatParameterValue(val any, schema *openapi3.Schema) string {
+	if schema != nil && schema.Type != nil && schema.Type.Is("integer") {
 		// Handle integer formatting
 		switch v := val.(type) {
 		case float64:
@@ -50,6 +52,263 @@ func formatParameterValue(val any, isInteger bool) string {
 	}
 	// Default formatting for non-integer types
 	return fmt.Sprintf("%v", val)
+}
+
+// arrayItemSchema returns the schema for items in an array parameter, or nil if not applicable.
+func arrayItemSchema(schema *openapi3.Schema) *openapi3.Schema {
+	if schema == nil || schema.Items == nil {
+		return nil
+	}
+	return schema.Items.Value
+}
+
+// getSeparator returns the separator for a given style
+func getSeparator(style string) string {
+	switch style {
+	case "spaceDelimited":
+		return " "
+	case "pipeDelimited":
+		return "|"
+	default:
+		return ","
+	}
+}
+
+// objectPropertySchema returns the schema for a property in an object parameter, or nil if not applicable.
+func objectPropertySchema(schema *openapi3.Schema, key string) *openapi3.Schema {
+	if schema == nil {
+		return nil
+	}
+	propRef, ok := schema.Properties[key]
+	if !ok || propRef == nil {
+		return nil
+	}
+	return propRef.Value
+}
+
+// serializeParameter is the main serialization function for all OpenAPI parameter types.
+// It returns url.Values to handle all cases including multiple values for the same key.
+// Ref. https://spec.openapis.org/oas/latest.html#parameter-object
+//
+// Styles:
+//   - simple: comma-separated values (path, header)
+//   - label: dot-prefixed values (path only)
+//   - matrix: semicolon-prefixed name-value pairs (path only)
+//   - form: ampersand-separated values (query, cookie)
+//   - spaceDelimited: space-separated values (query only)
+//   - pipeDelimited: pipe-separated values (query only)
+//   - deepObject: nested object notation like id[role]=admin (query only)
+//
+// Note: it does NOT support allowReserved parameter, all values are percent-encoded as needed.
+func serializeParameter(paramName string, val any, schema *openapi3.Schema, style string, explode bool, escapeFn func(string) string) url.Values {
+	result := url.Values{}
+
+	// Default escape function is no-op
+	escape := escapeFn
+	if escape == nil {
+		escape = func(s string) string { return s }
+	}
+
+	// Check value type
+	arr, isArray := val.([]any)
+	obj, isObject := val.(map[string]any)
+
+	// Helper to format and escape a value
+	formatValue := func(v any, valueSchema *openapi3.Schema) string {
+		return escape(formatParameterValue(v, valueSchema))
+	}
+
+	// Primitives - simple formatting
+	// Example: id=5
+	if !isArray && !isObject {
+		formatted := formatValue(val, schema)
+		switch style {
+		case "label":
+			// Label style: prefix with dot (e.g., .5)
+			result.Set(paramName, "."+formatted)
+		case "matrix":
+			// Matrix style: semicolon-prefixed name=value (e.g., ;id=5)
+			result.Set(paramName, ";"+escape(paramName)+"="+formatted)
+		default: // form, simple, etc.
+			// Default: just the value (e.g., 5)
+			result.Set(paramName, formatted)
+		}
+		return result
+	}
+
+	// Arrays
+	// Example: id=[3,4,5]
+	if isArray {
+		itemSchema := arrayItemSchema(schema)
+		var parts []string
+		for _, item := range arr {
+			parts = append(parts, formatValue(item, itemSchema))
+		}
+
+		switch style {
+		case "simple":
+			// Simple: comma-separated (e.g., 3,4,5)
+			result.Set(paramName, strings.Join(parts, ","))
+		case "label":
+			if explode {
+				// Label exploded: dot-separated with dot prefix (e.g., .3.4.5)
+				result.Set(paramName, "."+strings.Join(parts, "."))
+			} else {
+				// Label: comma-separated with dot prefix (e.g., .3,4,5)
+				result.Set(paramName, "."+strings.Join(parts, ","))
+			}
+		case "matrix":
+			if explode {
+				// Matrix exploded: repeated name=value pairs (e.g., ;id=3;id=4;id=5)
+				var matrixParts []string
+				for _, part := range parts {
+					matrixParts = append(matrixParts, escape(paramName)+"="+part)
+				}
+				result.Set(paramName, ";"+strings.Join(matrixParts, ";"))
+			} else {
+				// Matrix: single name with comma-separated values (e.g., ;id=3,4,5)
+				result.Set(paramName, ";"+escape(paramName)+"="+strings.Join(parts, ","))
+			}
+		case "form", "spaceDelimited", "pipeDelimited":
+			if explode {
+				// Exploded: multiple parameters with same name (e.g., id=3&id=4&id=5)
+				for _, part := range parts {
+					result.Add(paramName, part)
+				}
+			} else {
+				// Non-exploded: delimited values
+				result.Set(paramName, strings.Join(parts, getSeparator(style)))
+			}
+		default:
+			result.Set(paramName, strings.Join(parts, ","))
+		}
+		return result
+	}
+
+	// Objects
+	// Example: id={role:"admin",firstName:"Alex"}
+	if isObject {
+		// Sort keys for deterministic output
+		keys := make([]string, 0, len(obj))
+		for k := range obj {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+
+		// Build key-value pairs for most styles
+		buildParts := func() []string {
+			var parts []string
+			for _, k := range keys {
+				propSchema := objectPropertySchema(schema, k)
+				if explode {
+					parts = append(parts, escape(k)+"="+formatValue(obj[k], propSchema))
+				} else {
+					parts = append(parts, escape(k), formatValue(obj[k], propSchema))
+				}
+			}
+			return parts
+		}
+
+		switch style {
+		case "simple", "default":
+			result.Set(paramName, strings.Join(buildParts(), ","))
+		case "label":
+			sep := ","
+			if explode {
+				sep = "."
+			}
+			result.Set(paramName, "."+strings.Join(buildParts(), sep))
+		case "matrix":
+			if explode {
+				var matrixParts []string
+				for _, k := range keys {
+					matrixParts = append(matrixParts, escape(k)+"="+formatValue(obj[k], objectPropertySchema(schema, k)))
+				}
+				result.Set(paramName, ";"+strings.Join(matrixParts, ";"))
+			} else {
+				var parts []string
+				for _, k := range keys {
+					parts = append(parts, escape(k), formatValue(obj[k], objectPropertySchema(schema, k)))
+				}
+				result.Set(paramName, ";"+escape(paramName)+"="+strings.Join(parts, ","))
+			}
+		case "deepObject":
+			// Deep object: bracket notation for nested properties (e.g., id[role]=admin&id[firstName]=Alex)
+			for _, k := range keys {
+				result.Set(paramName+"["+k+"]", formatValue(obj[k], objectPropertySchema(schema, k)))
+			}
+		case "form", "spaceDelimited", "pipeDelimited":
+			if explode {
+				// Exploded: each property as separate param
+				for _, k := range keys {
+					result.Set(k, formatValue(obj[k], objectPropertySchema(schema, k)))
+				}
+			} else {
+				// Non-exploded: delimited key-value pairs
+				var parts []string
+				for _, k := range keys {
+					parts = append(parts, k, formatValue(obj[k], objectPropertySchema(schema, k)))
+				}
+				result.Set(paramName, strings.Join(parts, getSeparator(style)))
+			}
+		default:
+			result.Set(paramName, strings.Join(buildParts(), ","))
+		}
+		return result
+	}
+
+	return result
+}
+
+// serializeQueryParameter serializes a query parameter (form/spaceDelimited/pipeDelimited/deepObject styles).
+// NOTE: This implementation does NOT support the allowReserved parameter, all values are percent-encoded.
+func serializeQueryParameter(paramName string, val any, schema *openapi3.Schema, style string, explode bool) url.Values {
+	return serializeParameter(paramName, val, schema, style, explode, nil)
+}
+
+// serializePathParameter serializes a path parameter (simple/label/matrix styles).
+func serializePathParameter(paramName string, val any, schema *openapi3.Schema, style string, explode bool) string {
+	// Use serializeParameter with URL path escaping for each scalar value
+	result := serializeParameter(paramName, val, schema, style, explode, url.PathEscape)
+	return result.Get(paramName)
+}
+
+// serializeHeaderParameter serializes a header parameter (simple style only).
+// Headers always use simple style and are NOT URL-encoded.
+func serializeHeaderParameter(val any, schema *openapi3.Schema, explode bool) string {
+	values := serializeParameter("", val, schema, "simple", explode, nil)
+	return values.Get("")
+}
+
+// serializeCookieParameter serializes a cookie parameter (form style only).
+// Uses semicolon-space ("; ") as separator per RFC6265 cookie format.
+func serializeCookieParameter(paramName string, val any, schema *openapi3.Schema, explode bool) string {
+	values := serializeParameter(paramName, val, schema, "form", explode, nil)
+
+	// Collect all key=value pairs
+	var pairs []string
+
+	// Check if val is an array to preserve order
+	_, isArray := val.([]any)
+
+	if isArray && explode {
+		// For exploded arrays, preserve insertion order from url.Values
+		if vals, ok := values[paramName]; ok {
+			for _, v := range vals {
+				pairs = append(pairs, paramName+"="+v)
+			}
+		}
+	} else {
+		// For objects or non-exploded values, collect and sort for determinism
+		for key, vals := range values {
+			for _, v := range vals {
+				pairs = append(pairs, key+"="+v)
+			}
+		}
+		slices.Sort(pairs)
+	}
+
+	return strings.Join(pairs, "; ")
 }
 
 // generateAIFriendlyDescription creates a comprehensive, AI-optimized description for an operation
