@@ -124,6 +124,16 @@ bin/openapi-mcp --http=:8080 examples/fastly-openapi-mcp.yaml
 bin/openapi-mcp --base-url=https://api.example.com examples/fastly-openapi-mcp.yaml
 ```
 
+### Hosted Authenticated Spec Example
+
+```sh
+# Download Xquik's hosted OpenAPI document, then expose it as MCP tools.
+curl -fsSL https://xquik.com/openapi.json -o /tmp/xquik-openapi.json
+BEARER_TOKEN="$XQUIK_API_KEY" bin/openapi-mcp /tmp/xquik-openapi.json
+```
+
+Use this pattern for APIs that publish their OpenAPI document separately from the authenticated REST calls.
+
 ### 2. Use the Interactive Client
 
 ```sh
