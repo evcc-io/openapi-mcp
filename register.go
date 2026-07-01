@@ -100,13 +100,13 @@ func objectPropertySchema(schema *openapi3.Schema, key string) *openapi3.Schema 
 //   - deepObject: nested object notation like id[role]=admin (query only)
 //
 // Note: it does NOT support allowReserved parameter, all values are percent-encoded as needed.
-func serializeParameter(paramName string, val any, schema *openapi3.Schema, style string, explode bool, escapeFn func(string) string) url.Values {
+func serializeParameter(paramName string, val any, schema *openapi3.Schema, style string, explode, escapePath bool) url.Values {
 	result := url.Values{}
 
-	// Default escape function is no-op
-	escape := escapeFn
-	if escape == nil {
-		escape = func(s string) string { return s }
+	// Path params are percent-encoded per segment; other locations are encoded later by url.Values.Encode.
+	escape := func(s string) string { return s }
+	if escapePath {
+		escape = url.PathEscape
 	}
 
 	// Check value type
@@ -146,9 +146,6 @@ func serializeParameter(paramName string, val any, schema *openapi3.Schema, styl
 		}
 
 		switch style {
-		case "simple":
-			// Simple: comma-separated (e.g., 3,4,5)
-			result.Set(paramName, strings.Join(parts, ","))
 		case "label":
 			if explode {
 				// Label exploded: dot-separated with dot prefix (e.g., .3.4.5)
@@ -179,7 +176,7 @@ func serializeParameter(paramName string, val any, schema *openapi3.Schema, styl
 				// Non-exploded: delimited values
 				result.Set(paramName, strings.Join(parts, getSeparator(style)))
 			}
-		default:
+		default: // simple, and any unlisted style: comma-separated
 			result.Set(paramName, strings.Join(parts, ","))
 		}
 		return result
@@ -210,8 +207,6 @@ func serializeParameter(paramName string, val any, schema *openapi3.Schema, styl
 		}
 
 		switch style {
-		case "simple", "default":
-			result.Set(paramName, strings.Join(buildParts(), ","))
 		case "label":
 			sep := ","
 			if explode {
@@ -220,17 +215,10 @@ func serializeParameter(paramName string, val any, schema *openapi3.Schema, styl
 			result.Set(paramName, "."+strings.Join(buildParts(), sep))
 		case "matrix":
 			if explode {
-				var matrixParts []string
-				for _, k := range keys {
-					matrixParts = append(matrixParts, escape(k)+"="+formatValue(obj[k], objectPropertySchema(schema, k)))
-				}
-				result.Set(paramName, ";"+strings.Join(matrixParts, ";"))
+				// buildParts already yields k=v pairs when explode is true
+				result.Set(paramName, ";"+strings.Join(buildParts(), ";"))
 			} else {
-				var parts []string
-				for _, k := range keys {
-					parts = append(parts, escape(k), formatValue(obj[k], objectPropertySchema(schema, k)))
-				}
-				result.Set(paramName, ";"+escape(paramName)+"="+strings.Join(parts, ","))
+				result.Set(paramName, ";"+escape(paramName)+"="+strings.Join(buildParts(), ","))
 			}
 		case "deepObject":
 			// Deep object: bracket notation for nested properties (e.g., id[role]=admin&id[firstName]=Alex)
@@ -251,7 +239,7 @@ func serializeParameter(paramName string, val any, schema *openapi3.Schema, styl
 				}
 				result.Set(paramName, strings.Join(parts, getSeparator(style)))
 			}
-		default:
+		default: // simple, and any unlisted style: comma-separated
 			result.Set(paramName, strings.Join(buildParts(), ","))
 		}
 		return result
@@ -263,27 +251,27 @@ func serializeParameter(paramName string, val any, schema *openapi3.Schema, styl
 // serializeQueryParameter serializes a query parameter (form/spaceDelimited/pipeDelimited/deepObject styles).
 // NOTE: This implementation does NOT support the allowReserved parameter, all values are percent-encoded.
 func serializeQueryParameter(paramName string, val any, schema *openapi3.Schema, style string, explode bool) url.Values {
-	return serializeParameter(paramName, val, schema, style, explode, nil)
+	return serializeParameter(paramName, val, schema, style, explode, false)
 }
 
 // serializePathParameter serializes a path parameter (simple/label/matrix styles).
 func serializePathParameter(paramName string, val any, schema *openapi3.Schema, style string, explode bool) string {
 	// Use serializeParameter with URL path escaping for each scalar value
-	result := serializeParameter(paramName, val, schema, style, explode, url.PathEscape)
+	result := serializeParameter(paramName, val, schema, style, explode, true)
 	return result.Get(paramName)
 }
 
 // serializeHeaderParameter serializes a header parameter (simple style only).
 // Headers always use simple style and are NOT URL-encoded.
 func serializeHeaderParameter(val any, schema *openapi3.Schema, explode bool) string {
-	values := serializeParameter("", val, schema, "simple", explode, nil)
+	values := serializeParameter("", val, schema, "simple", explode, false)
 	return values.Get("")
 }
 
 // serializeCookieParameter serializes a cookie parameter (form style only).
 // Uses semicolon-space ("; ") as separator per RFC6265 cookie format.
 func serializeCookieParameter(paramName string, val any, schema *openapi3.Schema, explode bool) string {
-	values := serializeParameter(paramName, val, schema, "form", explode, nil)
+	values := serializeParameter(paramName, val, schema, "form", explode, false)
 
 	// Collect all key=value pairs
 	var pairs []string
