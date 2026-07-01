@@ -34,6 +34,24 @@ func toolHandler(
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
 		// Build parameter name mapping for escaped parameter names
 		paramNameMapping := buildParameterNameMapping(op.Parameters)
+		getParameterSchema := func(param *openapi3.Parameter) *openapi3.Schema {
+			if param == nil {
+				return nil
+			}
+			// Try schema first
+			if param.Schema != nil {
+				return param.Schema.Value
+			}
+			// Fall back to content (OpenAPI allows either schema OR content)
+			if param.Content != nil && len(param.Content) > 0 {
+				for _, mediaType := range param.Content {
+					if mediaType.Schema != nil {
+						return mediaType.Schema.Value
+					}
+				}
+			}
+			return nil
+		}
 
 		// Build URL path with path parameters
 		path := op.Path
@@ -45,12 +63,19 @@ func toolHandler(
 			p := paramRef.Value
 			if p.In == "path" {
 				if val, ok := getParameterValue(args, p.Name, paramNameMapping); ok {
-					// Check if parameter is integer type
-					isInteger := false
-					if p.Schema != nil && p.Schema.Value != nil && p.Schema.Value.Type != nil {
-						isInteger = p.Schema.Value.Type.Is("integer")
+					// Get style and explode from parameter
+					style := p.Style
+					if style == "" {
+						style = "simple" // default for path parameters
 					}
-					path = strings.ReplaceAll(path, "{"+p.Name+"}", formatParameterValue(val, isInteger))
+					explode := false // default for path parameters
+					if p.Explode != nil {
+						explode = *p.Explode
+					}
+
+					// Serialize the path parameter value
+					serialized := serializePathParameter(p.Name, val, getParameterSchema(p), style, explode)
+					path = strings.ReplaceAll(path, "{"+p.Name+"}", serialized)
 				}
 			}
 		}
@@ -65,12 +90,38 @@ func toolHandler(
 			p := paramRef.Value
 			if p.In == "query" {
 				if val, ok := getParameterValue(args, p.Name, paramNameMapping); ok {
-					// Check if parameter is integer type
-					isInteger := false
-					if p.Schema != nil && p.Schema.Value != nil && p.Schema.Value.Type != nil {
-						isInteger = p.Schema.Value.Type.Is("integer")
+					parameterSchema := getParameterSchema(p)
+
+					// Handle arrays and objects with OpenAPI serialization styles
+					// Check if val is an array or object
+					_, isArray := val.([]any)
+					_, isObject := val.(map[string]any)
+
+					if isArray || isObject {
+						// Get style and explode from parameter
+						style := p.Style
+						if style == "" {
+							style = "form" // default for query parameters
+						}
+						explode := true // default for form style
+						if p.Explode != nil {
+							explode = *p.Explode
+						} else if style != "form" {
+							// For non-form styles, default explode is false
+							explode = false
+						}
+
+						// Serialize according to OpenAPI spec
+						serialized := serializeQueryParameter(p.Name, val, parameterSchema, style, explode)
+						for key, values := range serialized {
+							for _, value := range values {
+								query.Add(key, value)
+							}
+						}
+					} else {
+						// Handle primitive values
+						query.Set(p.Name, formatParameterValue(val, parameterSchema))
 					}
-					query.Set(p.Name, formatParameterValue(val, isInteger))
 				}
 			}
 		}
@@ -153,12 +204,15 @@ func toolHandler(
 			p := paramRef.Value
 			if p.In == "header" {
 				if val, ok := getParameterValue(args, p.Name, paramNameMapping); ok {
-					// Check if parameter is integer type
-					isInteger := false
-					if p.Schema != nil && p.Schema.Value != nil && p.Schema.Value.Type != nil {
-						isInteger = p.Schema.Value.Type.Is("integer")
+					// Get explode from parameter (simple style is the only option for headers)
+					explode := false // default for simple style
+					if p.Explode != nil {
+						explode = *p.Explode
 					}
-					httpReq.Header.Set(p.Name, formatParameterValue(val, isInteger))
+
+					// Serialize the header parameter value
+					serialized := serializeHeaderParameter(val, getParameterSchema(p), explode)
+					httpReq.Header.Set(p.Name, serialized)
 				}
 			}
 		}
@@ -173,12 +227,15 @@ func toolHandler(
 			p := paramRef.Value
 			if p.In == "cookie" {
 				if val, ok := getParameterValue(args, p.Name, paramNameMapping); ok {
-					// Check if parameter is integer type
-					isInteger := false
-					if p.Schema != nil && p.Schema.Value != nil && p.Schema.Value.Type != nil {
-						isInteger = p.Schema.Value.Type.Is("integer")
+					// Get explode from parameter (form style is the only option for cookies)
+					explode := true // default for form style
+					if p.Explode != nil {
+						explode = *p.Explode
 					}
-					cookiePairs = append(cookiePairs, fmt.Sprintf("%s=%s", p.Name, formatParameterValue(val, isInteger)))
+
+					// Serialize according to OpenAPI spec
+					serialized := serializeCookieParameter(p.Name, val, getParameterSchema(p), explode)
+					cookiePairs = append(cookiePairs, serialized)
 				}
 			}
 		}
