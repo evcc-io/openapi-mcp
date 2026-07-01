@@ -123,24 +123,7 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 		example := map[string]any{}
 		for _, name := range propsOrder {
 			vmap, _ := props[name].(map[string]any)
-			typeStr, _ := vmap["type"].(string)
-			descStr, _ := vmap["description"].(string)
-			if typeStr == "string" && strings.Contains(strings.ToLower(descStr), "integer") {
-				example[name] = "123"
-				continue
-			}
-			switch typeStr {
-			case "string":
-				example[name] = "example"
-			case "number":
-				example[name] = 123.45
-			case "integer":
-				example[name] = 123
-			case "boolean":
-				example[name] = true
-			default:
-				example[name] = "..."
-			}
+			example[name] = exampleValue(vmap)
 		}
 
 		if len(example) > 0 {
@@ -150,6 +133,38 @@ func writeMarkdownDocFromSummaries(path string, summaries []map[string]any, doc 
 		}
 	}
 	return nil
+}
+
+// exampleValue derives a sample value, preferring the schema's example,
+// default, or first enum value before a type-based placeholder.
+func exampleValue(vmap map[string]any) any {
+	if ex, ok := vmap["examples"].([]any); ok && len(ex) > 0 {
+		return ex[0]
+	}
+	if def, ok := vmap["default"]; ok && def != nil {
+		return def
+	}
+	if enum, ok := vmap["enum"].([]any); ok && len(enum) > 0 {
+		return enum[0]
+	}
+
+	typeStr, _ := vmap["type"].(string)
+	descStr, _ := vmap["description"].(string)
+	if typeStr == "string" && strings.Contains(strings.ToLower(descStr), "integer") {
+		return "123"
+	}
+	switch typeStr {
+	case "string":
+		return "example"
+	case "number":
+		return 123.45
+	case "integer":
+		return 123
+	case "boolean":
+		return true
+	default:
+		return "..."
+	}
 }
 
 // processWithPostHook pipes JSON through an external command and returns the output.
