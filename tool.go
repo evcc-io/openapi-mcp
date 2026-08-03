@@ -380,6 +380,8 @@ func toolHandler(
 
 		// Always format the response as: HTTP <METHOD> <URL>\nStatus: <status>\nResponse:\n<respBody>
 		respText := fmt.Sprintf("HTTP %s %s\nStatus: %d\nResponse:\n%s", op.Method, fullURL, resp.StatusCode, string(respBody))
+		structured := structuredResponse(op, resp.StatusCode, respBody)
+
 		if args["stream"] == true {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
@@ -387,6 +389,7 @@ func toolHandler(
 						Text: respText,
 					},
 				},
+				StructuredContent: structured,
 			}, nil, nil
 		}
 
@@ -409,8 +412,42 @@ func toolHandler(
 					Text: respText,
 				},
 			},
+			StructuredContent: structured,
 		}, nil, nil
 	}
+}
+
+// structuredResponse describes a successful response for clients that read
+// structuredContent. The text content embeds the payload in a human readable
+// envelope, which clients otherwise have to parse back out of the string - and
+// cannot do reliably, as the request line may contain braces and brackets too.
+//
+// The envelope is always a JSON object, as the protocol requires, so payloads
+// that are arrays or scalars are carried in "body" as well.
+func structuredResponse(op OpenAPIOperation, statusCode int, respBody []byte) map[string]any {
+	res := map[string]any{
+		"type":        "api_response",
+		"http_status": statusCode,
+		"operation": map[string]any{
+			"id":     op.OperationID,
+			"method": op.Method,
+			"path":   op.Path,
+		},
+	}
+
+	if len(respBody) == 0 {
+		return res
+	}
+
+	// non-JSON payloads are carried verbatim
+	var body any
+	if err := json.Unmarshal(respBody, &body); err != nil {
+		res["body"] = string(respBody)
+	} else {
+		res["body"] = body
+	}
+
+	return res
 }
 
 func fulfillSecurity(secName string, httpReq *http.Request, doc *openapi3.T) bool {
